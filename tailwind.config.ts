@@ -10,7 +10,6 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Paleta del HTML original
         primary: {
           DEFAULT: '#6c5ce7',
           dark: '#5a4fcf',
@@ -24,6 +23,9 @@ const config: Config = {
           700: '#4a3fb8',
           800: '#3d3399',
           900: '#322a7a',
+        },
+        secondary: { // Added from original HTML vars
+          DEFAULT: '#a29bfe'
         },
         success: {
           DEFAULT: '#00b894',

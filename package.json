@@ -4,13 +4,13 @@
   "description": "Constructor IPTV Pro Multi-Servidor - Ingenio Pichichi S.A.",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack -p 9002",
-    "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
-    "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
+    "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.14.1",
@@ -48,11 +48,11 @@
     "framer-motion": "^10.16.16",
     "genkit": "^1.14.1",
     "lucide-react": "^0.475.0",
-    "next": "15.3.3",
+    "next": "14.2.5",
     "patch-package": "^8.0.0",
-    "react": "^18.3.1",
+    "react": "^18.2.0",
     "react-day-picker": "^8.10.1",
-    "react-dom": "^18.3.1",
+    "react-dom": "^18.2.0",
     "react-hook-form": "^7.54.2",
     "react-hot-toast": "^2.4.1",
     "recharts": "^2.15.1",
@@ -65,14 +65,15 @@
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.7",
     "@tailwindcss/typography": "^0.5.10",
-    "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/node": "^20.8.0",
+    "@types/react": "^18.2.25",
+    "@types/react-dom": "^18.2.11",
+    "autoprefixer": "^10.4.16",
     "genkit-cli": "^1.14.1",
-    "postcss": "^8",
+    "postcss": "^8.4.31",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.1.0",
-    "typescript": "^5"
+    "typescript": "^5.2.2"
   },
   "keywords": [
     "iptv",

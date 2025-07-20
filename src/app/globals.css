@@ -3,36 +3,7 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --primary-color: #6c5ce7;
-    --primary-dark: #5a4fcf;
-    --secondary-color: #a29bfe;
-    --success-color: #00b894;
-    --warning-color: #fdcb6e;
-    --error-color: #e84393;
-    --info-color: #74b9ff;
-    --dark-bg: #2d3436;
-    --darker-bg: #1e2426;
-    --card-bg: #636e72;
-    --card-hover: #74808a;
-    --text-primary: #ddd;
-    --text-secondary: #b2bec3;
-    --text-muted: #636e72;
-    --border-color: #4a5568;
-    --gradient-bg: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-  }
-
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-
   body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: var(--dark-bg);
-    color: var(--text-primary);
-    min-height: 100vh;
-    line-height: 1.6;
+    @apply bg-dark-bg text-text-primary;
   }
 }

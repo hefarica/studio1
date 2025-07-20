@@ -1,17 +1,20 @@
-export type ServerStatus = 'idle' | 'scanning' | 'connected' | 'completed' | 'error' | 'retrying';
-
-export interface Server {
+export interface IPTVServer {
   id: string;
   name: string;
   url: string;
-  user: string;
-  password?: string;
+  username: string;
+  password: string;
+  channels: number;
+  lastScan: string | null;
   status: ServerStatus;
-  activeChannels: number;
-  lastScan: string;
-  protocol?: string | null;
-  updatedAt?: string;
+  protocol: string | null;
+  categories: Category[];
+  totalChannels: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
+
+export type ServerStatus = 'idle' | 'scanning' | 'connected' | 'completed' | 'error' | 'retrying';
 
 export interface Category {
   category_id: string;
@@ -55,8 +58,8 @@ export interface ConnectionStatus {
   attempts: number;
   lastError?: string;
   nextRetryIn?: number;
-  retryTimeoutId?: NodeJS.Timeout;
 }
+
 
 export interface ScanResult {
   success: boolean;
@@ -67,9 +70,12 @@ export interface ScanResult {
   serverId: string;
 }
 
-export interface Stats {
-    serverCount: number;
-    channelCount: number;
-    lastScanTime: string;
-    cacheSize: number;
+export interface StatsData {
+  serversCount: number;
+  channelsCount: number;
+  lastScanTime: string;
+  cacheSize: string;
+  successfulScans: number;
+  failedScans: number;
+  avgScanTime: number;
 }

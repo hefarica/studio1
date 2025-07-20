@@ -65,7 +65,7 @@ export const NOTIFICATION_TYPES = {
   INFO: 'info',
 } as const;
 
-export const SERVER_STATUS_COLORS = {
+export const SERVER_STATUS_COLORS: Record<string, string> = {
   idle: 'bg-slate-500',
   scanning: 'bg-warning-500',
   connected: 'bg-success-500',
