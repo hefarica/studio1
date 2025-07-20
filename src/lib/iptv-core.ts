@@ -50,15 +50,18 @@ export class IPTVCore {
       });
       
       if (!response.ok) {
-        let errorText = `Scan API error! status: ${response.status}`;
+        // Read the response body only once as text.
+        const errorText = await response.text();
+        let errorMessage = `Scan API error! status: ${response.status}`;
         try {
-          const errorData = await response.json();
-          errorText = errorData.error || errorText;
+          // Try to parse the text as JSON.
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorMessage;
         } catch (e) {
-          // If parsing as JSON fails, use the response text as is.
-          errorText = await response.text();
+          // If parsing fails, it's likely HTML or plain text. Use a snippet as the error.
+          errorMessage = errorText.substring(0, 100);
         }
-        throw new Error(errorText);
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
