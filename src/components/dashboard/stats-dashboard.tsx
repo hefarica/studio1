@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { useServersStore } from '@/store/servers';
 
 
-export function StatsDashboard({ serverCount, channelCount, lastScanTime }: Omit<Stats, 'cacheSize'>) {
+export function StatsDashboard({ serverCount = 0, channelCount = 0, lastScanTime }: Omit<Stats, 'cacheSize'>) {
   
   const [isClient, setIsClient] = useState(false);
   const {cacheSize} = useServersStore(s => s.stats);
