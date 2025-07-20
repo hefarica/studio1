@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-const ServersList = ({ servers, onRemoveServer, onScanServer, scanning }) => {
+const ServersList = ({ servers, onRemoveServer, onScanServer, onTestConnection, scanning }) => {
   const getStatusText = (status) => {
     const statusMap = {
       'idle': 'Inactivo',
@@ -67,6 +67,14 @@ const ServersList = ({ servers, onRemoveServer, onScanServer, scanning }) => {
             <div className="server-header">
               <div className="server-name">{server.name}</div>
               <div className="server-actions">
+                <button 
+                  className="btn btn-secondary btn-small"
+                  onClick={() => onTestConnection(server)}
+                  disabled={scanning}
+                  title="Probar Conexión"
+                >
+                  🔗
+                </button>
                 <button 
                   className="btn btn-info btn-small" 
                   onClick={() => onScanServer(server)}

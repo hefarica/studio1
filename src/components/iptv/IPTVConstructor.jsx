@@ -125,51 +125,6 @@ const IPTVConstructor = () => {
     addLog('Servidor eliminado', 'info');
   }, [servers, saveServers, addLog]);
 
-  // Probar conexión de servidor
-  const testServerConnection = useCallback(async (server) => {
-    try {
-      addLog(`Probando conexión: ${server.name}`, 'info');
-      
-      const response = await fetch('/api/iptv/test-connection', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: server.url,
-          username: server.username,
-          password: server.password
-        })
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        const updatedServers = servers.map(s => 
-          s.id === server.id 
-            ? { ...s, status: 'connected', protocol: detectProtocol(result.data) }
-            : s
-        );
-        setServers(updatedServers);
-        saveServers(updatedServers);
-        addLog(`✅ ${server.name}: Conexión exitosa (${result.method})`, 'success');
-        return { success: true, data: result.data };
-      } else {
-        const updatedServers = servers.map(s => 
-          s.id === server.id ? { ...s, status: 'error' } : s
-        );
-        setServers(updatedServers);
-        saveServers(updatedServers);
-        addLog(`❌ ${server.name}: ${result.error}`, 'error');
-        return { success: false, error: result.error };
-      }
-    } catch (error) {
-      addLog(`❌ ${server.name}: Error de conexión - ${error.message}`, 'error');
-      return { success: false, error: error.message };
-    }
-  }, [servers, saveServers, addLog]);
-
-  // Detectar protocolo
   const detectProtocol = (data) => {
     if (data.server_info && data.user_info) {
       return 'Xtream Codes';
@@ -181,6 +136,42 @@ const IPTVConstructor = () => {
       return 'Desconocido';
     }
   };
+  
+  // Probar conexión de servidor
+  const testServerConnection = useCallback(async (server) => {
+    addLog(`Probando conexión: ${server.name}`, 'info');
+    
+    setServers(prev => prev.map(s => s.id === server.id ? { ...s, status: 'scanning' } : s));
+
+    try {
+      const response = await fetch('/api/iptv/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: server.url, username: server.username, password: server.password }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Error en la petición de prueba');
+      }
+
+      const updatedServers = servers.map(s => 
+        s.id === server.id 
+          ? { ...s, status: 'connected', protocol: detectProtocol(result.data) }
+          : s
+      );
+      setServers(updatedServers);
+      saveServers(updatedServers);
+      addLog(`✅ ${server.name}: Conexión exitosa (${result.method})`, 'success');
+      return { success: true, data: result.data };
+    } catch (error) {
+      setServers(prev => prev.map(s => s.id === server.id ? { ...s, status: 'error' } : s));
+      addLog(`❌ ${server.name}: ${error.message}`, 'error');
+      return { success: false, error: error.message };
+    }
+  }, [servers, saveServers, addLog]);
+
 
   // Probar todas las conexiones
   const testAllConnections = useCallback(async () => {
@@ -189,11 +180,12 @@ const IPTVConstructor = () => {
       return;
     }
 
-    addLog('Iniciando pruebas de conexión', 'info');
-    
+    addLog('Iniciando pruebas de conexión masivas', 'info');
+    setScanning(true);
     for (const server of servers) {
       await testServerConnection(server);
     }
+    setScanning(false);
   }, [servers, testServerConnection, addLog]);
 
   // Escanear servidor individual
@@ -206,22 +198,20 @@ const IPTVConstructor = () => {
     setScanning(true);
     addLog(`[SCAN] Iniciando escaneo de ${server.name}`, 'info');
     
-    // Actualizar estado del servidor
-    const updatedServers = servers.map(s => 
-      s.id === server.id ? { ...s, status: 'scanning', channels: 0 } : s
-    );
-    setServers(updatedServers);
+    setServers(prev => prev.map(s => s.id === server.id ? { ...s, status: 'scanning', channels: 0 } : s));
 
     try {
       const response = await fetch('/api/iptv/scan-server', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ server })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ server }),
       });
 
       const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || `Error escaneando el servidor`);
+      }
+
 
       if (result.success) {
         const { results } = result;
@@ -242,19 +232,10 @@ const IPTVConstructor = () => {
         saveServers(finalServers);
         addLog(`[SCAN] ${server.name} completado: ${results.totalChannels} canales`, 'success');
       } else {
-        const errorServers = servers.map(s => 
-          s.id === server.id ? { ...s, status: 'error' } : s
-        );
-        setServers(errorServers);
-        saveServers(errorServers);
-        addLog(`[SCAN] Error escaneando ${server.name}: ${result.error}`, 'error');
+         throw new Error(result.error || `Error en el resultado del escaneo`);
       }
     } catch (error) {
-      const errorServers = servers.map(s => 
-        s.id === server.id ? { ...s, status: 'error' } : s
-      );
-      setServers(errorServers);
-      saveServers(errorServers);
+      setServers(prev => prev.map(s => s.id === server.id ? { ...s, status: 'error' } : s));
       addLog(`[SCAN] Error escaneando ${server.name}: ${error.message}`, 'error');
     } finally {
       setScanning(false);
@@ -297,8 +278,9 @@ const IPTVConstructor = () => {
 
         await scanServer(server);
         
-        // Pausa entre servidores
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (i < servers.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
       
       addLog(`[SCAN] Escaneo masivo completado`, 'success');
@@ -351,6 +333,7 @@ const IPTVConstructor = () => {
           servers={servers}
           onRemoveServer={removeServer}
           onScanServer={scanServer}
+          onTestConnection={testServerConnection}
           scanning={scanning}
         />
 
