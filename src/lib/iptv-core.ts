@@ -58,8 +58,13 @@ export class IPTVCore {
           const errorJson = JSON.parse(errorText);
           errorMessage = errorJson.error || errorMessage;
         } catch (e) {
-          // If parsing fails, it's likely HTML or plain text. Use a snippet as the error.
-          errorMessage = errorText.substring(0, 100);
+          // If parsing fails, it's likely HTML or plain text. Check if it's HTML.
+          if (errorText.trim().startsWith('<')) {
+            // It's HTML, so we just use the generic error message.
+          } else {
+             // It's some other text, use a snippet.
+             errorMessage = errorText.substring(0, 100);
+          }
         }
         throw new Error(errorMessage);
       }
