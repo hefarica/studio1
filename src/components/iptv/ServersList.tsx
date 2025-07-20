@@ -41,109 +41,36 @@ export const ServersList: React.FC = () => {
   
     updateConnectionState(server.id, {
       isConnecting: true,
-      attempts: 1,
+      attempts: (connectionStates[server.id]?.attempts || 0) + 1,
       lastError: undefined,
-      nextRetryIn: undefined
     });
   
     updateServer(server.id, { status: 'scanning' });
-    addLog(`🔍 Iniciando diagnóstico de conexión: ${server.name}`, 'info', { serverId: server.id });
+    addLog(`🔍 Probando conexión: ${server.name}`, 'info', { serverId: server.id });
   
     try {
-      const result = await iptvCore.testServerConnection(server, 5);
+      const result = await iptvCore.testServerConnection(server);
   
       if (result.success) {
-        updateConnectionState(server.id, {
-          isConnecting: false,
-          attempts: 0,
-          lastError: undefined
-        });
-  
+        updateConnectionState(server.id, { isConnecting: false });
         updateServer(server.id, { 
           status: 'connected',
-          protocol: result.data ? iptvCore.detectProtocol(result.data) : null,
+          protocol: iptvCore.detectProtocol(result.data),
           lastScan: new Date().toLocaleString(),
-          updatedAt: new Date()
         });
-  
-        success(
-          'Conexión exitosa',
-          `${server.name} conectado en ${result.duration}s después de ${result.attempts} intento(s)`,
-          {
-            action: {
-              label: 'Escanear canales',
-              onClick: () => startServerScan(server)
-            }
-          }
-        );
-  
-        addLog(`✅ ${server.name}: Conexión exitosa en ${result.duration}s (${result.attempts} intentos)`, 'success', { serverId: server.id });
-  
+        success('Conexión exitosa', `${server.name} conectado en ${result.duration}s`);
+        addLog(`✅ ${server.name}: Conexión exitosa`, 'success', { serverId: server.id });
       } else {
-        // Error de conexión - proporcionar diagnóstico detallado
-        updateConnectionState(server.id, {
-          isConnecting: false,
-          attempts: result.attempts,
-          lastError: result.error
-        });
-  
-        updateServer(server.id, { status: 'error' });
-  
-        // Crear mensaje de error detallado con diagnóstico
-        const errorDetails = [
-          `Error: ${result.error}`,
-          `Intentos realizados: ${result.attempts}`,
-          `Tiempo total: ${result.duration}s`
-        ];
-  
-        if (result.diagnosis) {
-          errorDetails.push(`Diagnóstico: ${result.diagnosis.suggestions.join(', ')}`);
-        }
-  
-        error(
-          `Error de conexión - ${server.name}`,
-          result.error || 'Error desconocido de conexión',
-          {
-            action: {
-              label: 'Ver detalles',
-              onClick: () => {
-                alert(`DIAGNÓSTICO DETALLADO:\n\n${errorDetails.join('\n')}\n\nSUGERENCIAS:\n- Verificar URL y credenciales\n- Confirmar que el servidor esté online\n- Contactar al proveedor IPTV`);
-              }
-            }
-          }
-        );
-  
-        addLog(`❌ ${server.name}: ${result.error} (${result.attempts} intentos, ${result.duration}s)`, 'error', { serverId: server.id });
-  
-        // Log del diagnóstico si está disponible
-        if (result.diagnosis?.suggestions?.length > 0) {
-          addLog(`🩺 ${server.name}: ${result.diagnosis.suggestions.join(', ')}`, 'debug', { serverId: server.id });
-        }
+        throw new Error(result.error || 'Error de conexión desconocido');
       }
-  
     } catch (err: any) {
-      updateConnectionState(server.id, {
-        isConnecting: false,
-        attempts: 0,
-        lastError: 'Error crítico durante la prueba'
-      });
-  
+      const analyzedError = IPTVErrorHandler.analyzeError(err, { serverName: server.name });
+      updateConnectionState(server.id, { isConnecting: false, lastError: analyzedError.message });
       updateServer(server.id, { status: 'error' });
-  
-      error(
-        'Error crítico',
-        `${server.name}: ${err.message}`,
-        {
-          action: {
-            label: 'Reintentar',
-            onClick: () => testServerConnection(server)
-          }
-        }
-      );
-  
-      addLog(`💥 ${server.name}: Error crítico - ${err.message}`, 'error', { serverId: server.id });
+      error(`Error en ${server.name}`, analyzedError.message);
+      addLog(`❌ ${server.name}: ${analyzedError.message}`, 'error', { serverId: server.id });
     }
-  }, [iptvCore, isReady, connectionStates, updateConnectionState, updateServer, addLog, success, error, warning]);
+  }, [iptvCore, isReady, connectionStates, updateServer, addLog, success, error, warning, updateConnectionState]);
 
   const startServerScan = useCallback(async (server: IPTVServer) => {
     if (!isReady || !iptvCore) {
@@ -162,25 +89,7 @@ export const ServersList: React.FC = () => {
     addLog(`🚀 Iniciando escaneo completo de ${server.name}`, 'info', { serverId: server.id });
     
     try {
-      const result = await iptvCore.scanServer(
-        server,
-        (progress) => {
-          addLog(`📊 ${server.name}: ${progress.message}`, 'info', { 
-            serverId: server.id,
-            category: progress.currentCategory 
-          });
-          
-          // Actualizar progreso en tiempo real
-          if (progress.totalChannels) {
-            updateServer(server.id, { 
-              channels: progress.totalChannels,
-              updatedAt: new Date()
-            });
-          }
-        },
-        () => false // función de stop (no implementada por ahora)
-      );
-
+      const result = await iptvCore.scanServer(server);
       if (result.success) {
         updateServer(server.id, {
           status: 'completed',
@@ -189,17 +98,11 @@ export const ServersList: React.FC = () => {
           lastScan: new Date().toLocaleString(),
           updatedAt: new Date()
         });
-
-        success(
-          'Escaneo completado',
-          `${server.name}: ${result.channels} canales en ${result.duration}s`
-        );
-
+        success('Escaneo completado', `${server.name}: ${result.channels} canales en ${result.duration}s`);
         addLog(`🎉 ${server.name}: Escaneo completado - ${result.channels} canales`, 'success', { serverId: server.id });
       } else {
         throw new Error(result.errors.join(', '));
       }
-
     } catch (err: any) {
       updateServer(server.id, { status: 'error' });
       error('Error de escaneo', `${server.name}: ${err.message}`);
@@ -221,49 +124,18 @@ export const ServersList: React.FC = () => {
     if (connectionState?.isConnecting) {
       return {
         icon: '🔄',
-        text: `Conectando... (${connectionState.attempts}/5)`,
+        text: `Conectando... (Intento ${connectionState.attempts})`,
         color: 'text-amber-400',
         bgColor: 'bg-amber-900/20 border-amber-500/30'
       };
     }
 
     switch (server.status) {
-      case 'connected':
-        return {
-          icon: '✅',
-          text: `Conectado - ${server.channels} canales`,
-          color: 'text-emerald-400',
-          bgColor: 'bg-emerald-900/20 border-emerald-500/30'
-        };
-      case 'scanning':
-        return {
-          icon: '🔍',
-          text: 'Escaneando...',
-          color: 'text-blue-400',
-          bgColor: 'bg-blue-900/20 border-blue-500/30'
-        };
-      case 'completed':
-        return {
-          icon: '🎯',
-          text: `Completado - ${server.totalChannels} canales`,
-          color: 'text-purple-400',
-          bgColor: 'bg-purple-900/20 border-purple-500/30'
-        };
-      case 'error':
-        const errorState = connectionStates[server.id];
-        return {
-          icon: '❌',
-          text: errorState?.lastError || 'Error de conexión',
-          color: 'text-error-400',
-          bgColor: 'bg-error-900/20 border-error-500/30'
-        };
-      default:
-        return {
-          icon: '⚪',
-          text: 'Sin probar',
-          color: 'text-slate-400',
-          bgColor: 'bg-slate-800/50 border-slate-600/30'
-        };
+      case 'connected': return { icon: '✅', text: `Conectado`, color: 'text-emerald-400', bgColor: 'bg-emerald-900/20 border-emerald-500/30' };
+      case 'scanning': return { icon: '🔍', text: 'Escaneando...', color: 'text-blue-400', bgColor: 'bg-blue-900/20 border-blue-500/30' };
+      case 'completed': return { icon: '🎯', text: `Completado - ${server.totalChannels} canales`, color: 'text-purple-400', bgColor: 'bg-purple-900/20 border-purple-500/30' };
+      case 'error': return { icon: '❌', text: connectionState?.lastError || 'Error', color: 'text-error-400', bgColor: 'bg-error-900/20 border-error-500/30' };
+      default: return { icon: '⚪', text: 'Sin probar', color: 'text-slate-400', bgColor: 'bg-slate-800/50 border-slate-600/30' };
     }
   };
 
@@ -271,12 +143,8 @@ export const ServersList: React.FC = () => {
     return (
       <Card className="text-center py-12">
         <div className="text-6xl mb-4 opacity-50">🗂️</div>
-        <h3 className="text-xl font-semibold text-slate-300 mb-2">
-          No hay servidores configurados
-        </h3>
-        <p className="text-slate-400">
-          Agrega tu primer servidor IPTV usando el formulario de arriba
-        </p>
+        <h3 className="text-xl font-semibold text-slate-300 mb-2">No hay servidores configurados</h3>
+        <p className="text-slate-400">Agrega tu primer servidor IPTV usando el formulario de arriba</p>
       </Card>
     );
   }
@@ -286,9 +154,7 @@ export const ServersList: React.FC = () => {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <span className="text-3xl">📋</span>
-          <h2 className="text-xl font-semibold text-white">
-            Servidores Configurados
-          </h2>
+          <h2 className="text-xl font-semibold text-white">Servidores Configurados</h2>
         </div>
         <div className="inline-flex items-center gap-2 bg-info-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
           <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
@@ -304,130 +170,45 @@ export const ServersList: React.FC = () => {
           return (
             <div
               key={server.id}
-              className={clsx(
-                'rounded-lg border p-5 transition-all duration-300',
-                'hover:shadow-lg hover:translate-x-1',
-                status.bgColor,
-                server.status === 'scanning' && 'animate-pulse-slow'
-              )}
+              className={clsx('rounded-lg border p-5 transition-all duration-300', 'hover:shadow-lg hover:translate-x-1', status.bgColor, server.status === 'scanning' && 'animate-pulse-slow')}
             >
-              {/* Header */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">{status.icon}</span>
                   <div>
-                    <h3 className="font-semibold text-lg text-white">
-                      {server.name}
-                    </h3>
-                    <p className={clsx('text-sm', status.color)}>
-                      {status.text}
-                    </p>
+                    <h3 className="font-semibold text-lg text-white">{server.name}</h3>
+                    <p className={clsx('text-sm', status.color)}>{status.text}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {connectionState?.isConnecting && (
-                    <Loading size="sm" variant="spinner" />
-                  )}
-                  
-                  <Button
-                    size="sm"
-                    variant="info"
-                    onClick={() => testServerConnection(server)}
-                    disabled={connectionState?.isConnecting || server.status === 'scanning'}
-                    icon="🔍"
-                  >
-                    Probar
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => startServerScan(server)}
-                    disabled={connectionState?.isConnecting || server.status === 'scanning'}
-                    icon="📡"
-                  >
-                    Escanear
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => handleRemoveServer(server)}
-                    disabled={connectionState?.isConnecting || server.status === 'scanning'}
-                    icon="🗑️"
-                  >
-                    Eliminar
-                  </Button>
+                  {connectionState?.isConnecting && <Loading size="sm" variant="spinner" />}
+                  <Button size="sm" variant="info" onClick={() => testServerConnection(server)} disabled={connectionState?.isConnecting || server.status === 'scanning'} icon="🔍">Probar</Button>
+                  <Button size="sm" variant="secondary" onClick={() => startServerScan(server)} disabled={connectionState?.isConnecting || server.status === 'scanning'} icon="📡">Escanear</Button>
+                  <Button size="sm" variant="danger" onClick={() => handleRemoveServer(server)} disabled={connectionState?.isConnecting || server.status === 'scanning'} icon="🗑️">Eliminar</Button>
                 </div>
               </div>
 
-              {/* Server Info */}
               <div className="text-sm text-slate-300 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-500">🌐 URL:</span>
-                  <span className="font-mono text-xs break-all">{server.url}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-500">👤 Usuario:</span>
-                  <span className="font-mono text-xs">{server.username}</span>
-                </div>
+                <div className="flex items-center gap-2"><span className="text-slate-500">🌐 URL:</span><span className="font-mono text-xs break-all">{server.url}</span></div>
+                <div className="flex items-center gap-2"><span className="text-slate-500">👤 Usuario:</span><span className="font-mono text-xs">{server.username}</span></div>
                 <div className="flex items-center gap-4 mt-2">
                   <span className="text-slate-500">🔧 Protocolo: <span className="text-slate-300">{server.protocol || 'No detectado'}</span></span>
                   <span className="text-slate-500">⏰ Último escaneo: <span className="text-slate-300">{server.lastScan || 'Nunca'}</span></span>
                 </div>
               </div>
 
-              {/* Error Info */}
               {connectionState?.lastError && server.status === 'error' && (
                 <div className="mt-4 p-3 bg-error-900/30 border border-error-500/30 rounded-lg">
                   <div className="flex items-start gap-2">
                     <span className="text-error-400 text-lg flex-shrink-0">🔧</span>
                     <div>
-                      <h4 className="text-sm font-semibold text-error-300 mb-1">
-                        Diagnóstico del Error:
-                      </h4>
-                      <p className="text-xs text-error-200 mb-2">
-                        {connectionState.lastError}
-                      </p>
-                      
-                      <div className="text-xs text-error-200/80">
-                        <strong>Soluciones sugeridas:</strong>
-                        <ul className="mt-1 space-y-1 list-disc list-inside">
-                          <li>Verificar URL y credenciales del servidor</li>
-                          <li>Comprobar conectividad de red</li>
-                          <li>El sistema reintentará automáticamente</li>
-                          <li>Contactar al proveedor IPTV si persiste</li>
-                        </ul>
-                      </div>
+                      <h4 className="text-sm font-semibold text-error-300 mb-1">Diagnóstico del Error:</h4>
+                      <p className="text-xs text-error-200 mb-2">{connectionState.lastError}</p>
                     </div>
                   </div>
                 </div>
               )}
-
-              {/* Stats */}
-              <div className="flex items-center gap-6 mt-4 pt-3 border-t border-slate-600/30">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span className="text-xs text-slate-400">
-                    <span className={clsx('font-semibold', server.channels > 0 ? 'text-emerald-400' : 'text-slate-400')}>
-                      {server.channels}
-                    </span> canales
-                  </span>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                  <span className="text-xs text-slate-400">
-                    <span className="font-semibold text-blue-400">{server.categories.length}</span> categorías
-                  </span>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <span className={clsx('w-2 h-2 rounded-full', SERVER_STATUS_COLORS[server.status])}></span>
-                  <span className="text-xs text-slate-400 capitalize">{server.status}</span>
-                </div>
-              </div>
             </div>
           );
         })}
