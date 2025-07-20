@@ -2,18 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { IPTVCore } from '@/lib/iptv-core';
 import { IPTVErrorHandler } from '@/lib/error-handler';
 import { CONFIG } from '@/lib/constants';
-import { IPTVServer, ScanResult } from '@/lib/types';
+import { IPTVServer, ScanProgress, ScanResult } from '@/lib/types';
 
-// Store active scans
-const activeScans = new Map<string, {
+// Store active scans in memory
+export const activeScans = new Map<string, {
   servers: IPTVServer[];
-  progress: any;
+  progress: ScanProgress;
+  results: ScanResult[];
   abortController: AbortController;
 }>();
 
 export async function POST(request: NextRequest) {
   try {
-    const { serverIds, scanId, config = {} } = await request.json();
+    const { serverIds, scanId: providedScanId, config = {} } = await request.json();
     
     if (!Array.isArray(serverIds) || serverIds.length === 0) {
       return NextResponse.json({
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Obtener servidores (normalmente desde DB, aquí simulamos)
+    // This is a simplified server retrieval. In a real app, this would come from a database.
     const servers = getServersById(serverIds);
     
     if (servers.length === 0) {
@@ -34,39 +35,46 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
-    const finalScanId = scanId || `scan_${Date.now()}`;
+    const scanId = providedScanId || `scan_${Date.now()}`;
     const abortController = new AbortController();
     
-    // Almacenar scan activo
-    activeScans.set(finalScanId, {
+    // Store the active scan details
+    activeScans.set(scanId, {
       servers,
       progress: {
         current: 0,
         total: servers.length,
         percentage: 0,
         startTime: Date.now(),
-        channelsFound: 0
+        channelsFound: 0,
+        eta: null,
       },
+      results: [],
       abortController
     });
 
-    console.log(`🚀 [SCAN-ALL] Iniciando escaneo masivo: ${servers.length} servidores`);
+    console.log(`🚀 [SCAN-ALL] Initiating scan for ${servers.length} servers with ID: ${scanId}`);
 
-    // Iniciar escaneo asíncrono
-    scanServersAsync(finalScanId, servers, config).catch(error => {
-      console.error(`💥 [SCAN-ALL] Error en escaneo ${finalScanId}:`, error);
+    // Start the scan asynchronously. Do not `await` this call.
+    scanServersAsync(scanId, servers, config).catch(error => {
+      console.error(`💥 [SCAN-ALL] Uncaught error in async scan ${scanId}:`, error);
+      const scanData = activeScans.get(scanId);
+      if (scanData) {
+        scanData.progress.percentage = 100; // Mark as complete to stop polling
+        scanData.progress.eta = 0;
+      }
     });
 
     return NextResponse.json({
       success: true,
-      scanId: finalScanId,
+      scanId: scanId,
       serversCount: servers.length,
       message: `Escaneo iniciado para ${servers.length} servidor(es)`,
       timestamp: new Date().toISOString()
     });
 
   } catch (error: any) {
-    console.error('[SCAN-ALL] Error inesperado:', error);
+    console.error('[SCAN-ALL] Unexpected error:', error);
     
     return NextResponse.json({
       success: false,
@@ -83,65 +91,39 @@ async function scanServersAsync(scanId: string, servers: IPTVServer[], config: a
 
   const { abortController } = scanData;
   const iptvCore = new IPTVCore();
-  const results: ScanResult[] = [];
   let totalChannelsFound = 0;
+  const startTime = Date.now();
 
   try {
     for (let i = 0; i < servers.length; i++) {
       if (abortController.signal.aborted) {
-        console.log(`⏹️ [SCAN-ALL] Escaneo ${scanId} cancelado`);
+        console.log(`⏹️ [SCAN-ALL] Scan ${scanId} was cancelled.`);
         break;
       }
 
       const server = servers[i];
-      console.log(`[SCAN ${i + 1}/${servers.length}] Procesando: ${server.name}`);
-
-      // Actualizar progreso
-      const progress = {
-        current: i + 1,
-        total: servers.length,
-        percentage: ((i + 1) / servers.length) * 100,
-        currentServer: server.name,
-        channelsFound: totalChannelsFound
-      };
-
-      updateScanProgress(scanId, progress);
+      updateScanProgress(scanId, { currentServer: server.name });
 
       try {
-        // Escanear servidor con manejo de errores
-        const result: {success: boolean, results?: { totalChannels: number, categories: any[]}, error?: string} = await IPTVErrorHandler.handleRetry(
-          async () => {
-            return await iptvCore.scanServer(
-              server
-            );
-          },
-          { 
-            serverName: server.name, 
-            operationType: 'full_scan' 
-          },
-          3 // máximo 3 intentos para escaneo completo
+        const result = await IPTVErrorHandler.handleRetry(
+          () => iptvCore.scanServer(server),
+          { serverName: server.name, operationType: 'full_scan' },
+          3 // Max 3 retries for a full scan
         );
-
-        if (result.success && result.results) {
-          const scanResult: ScanResult = {
-            success: true,
-            channels: result.results.totalChannels,
-            categories: result.results.categories.length,
-            errors: [],
-            duration: 0, // Placeholder
-            serverId: server.id
-          };
-          results.push(scanResult);
+        
+        const scanResult: ScanResult = {
+          success: result.success,
+          channels: result.success ? result.results.totalChannels : 0,
+          categories: result.success ? result.results.categories.length : 0,
+          errors: result.success ? [] : [result.error || 'Unknown scan error'],
+          duration: 0, // Placeholder, will be calculated later
+          serverId: server.id
+        };
+        
+        scanData.results.push(scanResult);
+        if (scanResult.success) {
           totalChannelsFound += scanResult.channels;
-
-          console.log(`✅ [SCAN] ${server.name}: ${scanResult.channels} canales`);
-
-          // Notificar servidor completado
-          notifyServerCompleted(scanId, scanResult);
-        } else {
-            throw new Error(result.error || 'Unknown scan error');
         }
-
 
       } catch (serverError: any) {
         const errorResult: ScanResult = {
@@ -152,58 +134,56 @@ async function scanServersAsync(scanId: string, servers: IPTVServer[], config: a
           duration: 0,
           serverId: server.id
         };
-
-        results.push(errorResult);
-        console.error(`❌ [SCAN] ${server.name} falló: ${serverError.message}`);
-
-        // Notificar error del servidor
-        notifyServerCompleted(scanId, errorResult);
+        scanData.results.push(errorResult);
+        console.error(`❌ [SCAN] ${server.name} failed: ${serverError.message}`);
       }
 
-      // Pausa entre servidores para no sobrecargar
+      // Update progress after each server
+      const elapsedTime = Date.now() - startTime;
+      const avgTimePerServer = elapsedTime / (i + 1);
+      const remainingServers = servers.length - (i + 1);
+      const eta = avgTimePerServer * remainingServers;
+
+      updateScanProgress(scanId, {
+        current: i + 1,
+        percentage: ((i + 1) / servers.length) * 100,
+        channelsFound: totalChannelsFound,
+        eta: Math.round(eta)
+      });
+      
       if (i < servers.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
 
-    // Notificar escaneo completado
-    const finalProgress = {
-      current: servers.length,
-      total: servers.length,
+    // Finalize scan
+    updateScanProgress(scanId, {
       percentage: 100,
-      channelsFound: totalChannelsFound
-    };
-
-    updateScanProgress(scanId, finalProgress);
-    notifyScanCompleted(scanId, {
-      totalServers: servers.length,
-      successfulScans: results.filter(r => r.success).length,
-      failedScans: results.filter(r => !r.success).length,
-      totalChannels: totalChannelsFound,
-      duration: Date.now() - (scanData.progress.startTime || Date.now())
+      eta: 0,
+      currentServer: undefined,
     });
-
-    console.log(`🎉 [SCAN-ALL] Escaneo ${scanId} completado: ${totalChannelsFound} canales`);
+    console.log(`🎉 [SCAN-ALL] Scan ${scanId} completed. Found ${totalChannelsFound} total channels.`);
 
   } catch (error: any) {
-    console.error(`💥 [SCAN-ALL] Error crítico en escaneo ${scanId}:`, error);
-    notifyScanError(scanId, error.message);
+    console.error(`💥 [SCAN-ALL] Critical error during scan ${scanId}:`, error);
+    updateScanProgress(scanId, { percentage: 100, eta: 0 }); // Mark as complete
   } finally {
-    // Limpiar scan activo
-    activeScans.delete(scanId);
+    // Keep data for a while so client can fetch final results
+    setTimeout(() => {
+        activeScans.delete(scanId);
+        console.log(`[SCAN-ALL] Cleaned up scan data for ${scanId}`);
+    }, 300000); // 5 minutes
   }
 }
 
-// Helper functions (implementación simplificada)
+// Helper function to get server details by ID. Replace with your actual data source.
 function getServersById(serverIds: string[]): IPTVServer[] {
-  // En implementación real, obtener desde base de datos
-  // Por ahora simulamos datos
   return serverIds.map((id, index) => ({
     id,
-    name: `Servidor ${id}`,
-    url: `http://example${index + 1}.com:8080`,
-    username: `user${index + 1}`,
-    password: `pass${index + 1}`,
+    name: `EVESTV`,
+    url: `http://126954339934.d4ktv.info:80`,
+    username: `uqb3fbu3b`,
+    password: `63524`,
     channels: 0,
     lastScan: null,
     status: 'idle' as const,
@@ -215,21 +195,12 @@ function getServersById(serverIds: string[]): IPTVServer[] {
   }));
 }
 
-function updateScanProgress(scanId: string, progress: any) {
-  // En implementación real, usar WebSockets o Server-Sent Events
-  console.log(`📊 [PROGRESS] ${scanId}: ${progress.percentage.toFixed(1)}%`);
-}
-
-function notifyServerCompleted(scanId: string, result: ScanResult) {
-  console.log(`📡 [SERVER-DONE] ${scanId}: ${result.serverId} - ${result.success ? 'SUCCESS' : 'FAILED'}`);
-}
-
-function notifyScanCompleted(scanId: string, summary: any) {
-  console.log(`🎯 [SCAN-COMPLETE] ${scanId}:`, summary);
-}
-
-function notifyScanError(scanId: string, error: string) {
-  console.error(`💥 [SCAN-ERROR] ${scanId}: ${error}`);
+function updateScanProgress(scanId: string, progressUpdate: Partial<ScanProgress>) {
+  const scanData = activeScans.get(scanId);
+  if (scanData) {
+    scanData.progress = { ...scanData.progress, ...progressUpdate };
+    // console.log(`📊 [PROGRESS] ${scanId}: ${scanData.progress.percentage.toFixed(1)}%`);
+  }
 }
 
 export async function DELETE(request: NextRequest) {
@@ -249,7 +220,7 @@ export async function DELETE(request: NextRequest) {
       scanData.abortController.abort();
       activeScans.delete(scanId);
       
-      console.log(`⏹️ [SCAN-CANCEL] Escaneo ${scanId} cancelado`);
+      console.log(`⏹️ [SCAN-CANCEL] Scan ${scanId} cancelled by request.`);
       
       return NextResponse.json({
         success: true,

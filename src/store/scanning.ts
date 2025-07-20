@@ -11,6 +11,7 @@ interface ScanningState {
   progress: ScanProgress;
   results: ScanResult[];
   abortController: AbortController | null;
+  pollingInterval: NodeJS.Timeout | null;
   startScan: (serverIds: string[]) => Promise<void>;
   stopScan: () => void;
   updateProgress: (progress: Partial<ScanProgress>) => void;
@@ -19,7 +20,7 @@ interface ScanningState {
   reset: () => void;
 }
 
-export const useScanningStore = create<ScanningState>()((set, get) => ({
+const initialState = {
   isScanning: false,
   scanId: null,
   progress: {
@@ -32,6 +33,59 @@ export const useScanningStore = create<ScanningState>()((set, get) => ({
   },
   results: [],
   abortController: null,
+  pollingInterval: null,
+};
+
+const pollForProgress = (scanId: string) => {
+  const { addLog } = useLogsStore.getState();
+  const { updateProgress, addResult, reset } = useScanningStore.getState();
+  const { updateServer } = useServersStore.getState();
+
+  const intervalId = setInterval(async () => {
+    try {
+      const response = await fetch(`/api/iptv/scan-status?scanId=${scanId}`);
+      if (!response.ok) {
+        const data = await response.json();
+        if (data.code === 'NOT_FOUND') {
+            addLog(`Scan ${scanId} completed.`, 'success');
+            clearInterval(intervalId);
+            useScanningStore.getState().reset();
+        }
+        return;
+      }
+      
+      const { data } = await response.json();
+      updateProgress(data.progress);
+      
+      // Update server statuses based on results
+      data.results.forEach((result: ScanResult) => {
+        const server = useServersStore.getState().servers.find(s => s.id === result.serverId);
+        if (server && server.status === 'scanning') {
+            updateServer(result.serverId, { 
+                status: result.success ? 'completed' : 'error',
+                totalChannels: result.channels,
+                lastScan: new Date().toLocaleString()
+            });
+        }
+      });
+
+      if (data.isComplete) {
+        addLog(`Scan ${scanId} finalized.`, 'success');
+        clearInterval(intervalId);
+        setTimeout(() => useScanningStore.getState().reset(), 5000); // Keep final results for a bit
+      }
+    } catch (error) {
+      addLog(`Error polling for scan progress: ${(error as Error).message}`, 'error');
+      clearInterval(intervalId);
+      reset();
+    }
+  }, 2000); // Poll every 2 seconds
+
+  return intervalId;
+};
+
+export const useScanningStore = create<ScanningState>()((set, get) => ({
+  ...initialState,
   startScan: async (serverIds: string[]) => {
     const { addLog } = useLogsStore.getState();
     const { updateServer } = useServersStore.getState();
@@ -47,19 +101,14 @@ export const useScanningStore = create<ScanningState>()((set, get) => ({
     }
 
     const abortController = new AbortController();
-    const scanId = `scan_${Date.now()}`;
-
+    
     set({
       isScanning: true,
-      scanId,
       abortController,
       progress: {
-        current: 0,
+        ...initialState.progress,
         total: serverIds.length,
-        percentage: 0,
         startTime: Date.now(),
-        eta: null,
-        channelsFound: 0,
       },
       results: [],
     });
@@ -70,7 +119,7 @@ export const useScanningStore = create<ScanningState>()((set, get) => ({
       const response = await fetch('/api/iptv/scan-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serverIds, scanId }),
+        body: JSON.stringify({ serverIds }),
         signal: abortController.signal,
       });
 
@@ -80,13 +129,18 @@ export const useScanningStore = create<ScanningState>()((set, get) => ({
       }
       
       const result = await response.json();
-      addLog(`[${scanId}] Escaneo masivo iniciado para ${result.serversCount} servidor(es).`, 'info');
+      set({ scanId: result.scanId });
+      addLog(`[${result.scanId}] Escaneo masivo iniciado para ${result.serversCount} servidor(es).`, 'info');
+
+      // Start polling
+      const pollingInterval = pollForProgress(result.scanId);
+      set({ pollingInterval });
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        addLog(`[${scanId}] Petición de inicio de escaneo cancelada.`, 'warning');
+        addLog(`Petición de inicio de escaneo cancelada.`, 'warning');
       } else {
-        addLog(`[${scanId}] Error al iniciar el escaneo masivo: ${error.message}`, 'error');
+        addLog(`Error al iniciar el escaneo masivo: ${error.message}`, 'error');
         get().reset();
         throw error;
       }
@@ -99,15 +153,20 @@ export const useScanningStore = create<ScanningState>()((set, get) => ({
 
     addLog(`[${state.scanId}] Solicitando cancelación de escaneo...`, 'warning');
     
+    if (state.pollingInterval) {
+        clearInterval(state.pollingInterval);
+    }
+    
     try {
         await fetch(`/api/iptv/scan-all?scanId=${state.scanId}`, {
             method: 'DELETE',
         });
         state.abortController?.abort();
-        set({ isScanning: false, scanId: null, abortController: null });
         addLog(`[${state.scanId}] Escaneo cancelado.`, 'success');
     } catch(err) {
         addLog(`Error al cancelar escaneo: ${(err as Error).message}`, 'error');
+    } finally {
+        get().reset();
     }
   },
   updateProgress: (progressUpdate) => {
@@ -118,14 +177,17 @@ export const useScanningStore = create<ScanningState>()((set, get) => ({
   },
   clearResults: () => set({ results: [] }),
   reset: () => {
-    get().abortController?.abort();
-    set({
-      isScanning: false,
-      scanId: null,
-      abortController: null,
-      progress: { current: 0, total: 0, percentage: 0, startTime: null, eta: null, channelsFound: 0 },
-      results: [],
+    const state = get();
+    if (state.pollingInterval) {
+        clearInterval(state.pollingInterval);
+    }
+    // Set all servers that are stuck in "scanning" to "idle"
+    useServersStore.getState().servers.forEach(server => {
+        if(server.status === 'scanning') {
+            useServersStore.getState().updateServer(server.id, { status: 'idle' });
+        }
     });
+    set({ ...initialState });
   },
 }));
 
