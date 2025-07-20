@@ -48,7 +48,7 @@ export function ProgressOverview({
           <div className="grid grid-cols-2 gap-4 text-center">
             <div>
               <Tv className="h-6 w-6 mx-auto text-accent" />
-              <p className="mt-2 text-xs text-muted-foreground uppercase">Canales Activos</p>
+              <p className="mt-2 text-xs text-muted-foreground uppercase">Canales Encontrados</p>
               <p className="font-bold text-lg">
                 {isClient ? totalChannels.toLocaleString() : '...'}
               </p>

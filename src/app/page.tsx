@@ -11,6 +11,9 @@ import { ControlPanel } from '@/components/dashboard/control-panel';
 import { ProgressOverview } from '@/components/dashboard/progress-overview';
 import { AiOptimizer } from '@/components/dashboard/ai-optimizer';
 import { ChannelExporter } from '@/components/dashboard/channel-exporter';
+import { fetchXtreamCodesData } from './actions';
+import { useToast } from '@/hooks/use-toast';
+
 
 const initialServers: Server[] = [
   { 
@@ -20,6 +23,7 @@ const initialServers: Server[] = [
     status: 'Online', 
     activeChannels: 759,
     user: 'uqb3fbu3b',
+    password: 'Password123', // Example password
     lastScan: 'Nunca',
   },
 ];
@@ -37,6 +41,7 @@ export default function DashboardPage() {
   const [eta, setEta] = useState('00:00:00');
   const [totalChannelsFound, setTotalChannelsFound] = useState(0);
   const [memoryUsage, setMemoryUsage] = useState(128);
+  const { toast } = useToast();
 
   useEffect(() => {
     const initialTotalChannels = servers.reduce((acc, server) => acc + (server.activeChannels || 0), 0);
@@ -51,48 +56,68 @@ export default function DashboardPage() {
     setLogs(prev => [{ id: newLogId, timestamp: timestamp, message: formattedMessage, level }, ...prev].slice(0, 100));
   }, []);
 
-  const runScanSimulation = (onComplete: (channelsFound: number) => void, totalChannelsToFind: number = 40127) => {
+  const runScan = async (serversToScan: Server[]) => {
+    if (isScanning) return;
     setIsScanning(true);
     setScanProgress(0);
+    setEta('Calculando...');
 
-    const totalDuration = 5 * 60 * 1000; // 5 minutos
-    const intervalTime = 250;
-    const steps = totalDuration / intervalTime;
-    let currentStep = 0;
+    addLog(`[INFO] Iniciando escaneo real para ${serversToScan.length} servidor(es).`, 'info');
+
+    // Reset total channels if scanning all
+    if (serversToScan.length === servers.length) {
+      setTotalChannelsFound(0);
+    }
     
-    const scanInterval = setInterval(() => {
-      currentStep++;
-      const progress = (currentStep / steps) * 100;
-      setScanProgress(progress);
-      
-      const remainingTime = totalDuration - (currentStep * intervalTime);
-      const etaDate = new Date(remainingTime);
-      const mm = String(etaDate.getUTCMinutes()).padStart(2, '0');
-      const ss = String(etaDate.getUTCSeconds()).padStart(2, '0');
-      setEta(`00:${mm}:${ss}`);
-      
-      const newChannelsThisStep = Math.floor(Math.random() * (totalChannelsToFind / steps) * 2);
+    // Set servers to scanning state
+    setServers(prev => prev.map(s => serversToScan.some(sts => sts.id === s.id) ? { ...s, status: 'Scanning', activeChannels: 0 } : s));
 
-      setTotalChannelsFound(prevTotal => {
-        const newTotal = prevTotal + newChannelsThisStep;
+    let grandTotal = 0;
+    const scanStartTime = Date.now();
+
+    for (const server of serversToScan) {
+      try {
+        addLog(`[INFO] Obteniendo datos de ${server.name}...`, 'info');
+        const streams = await fetchXtreamCodesData(server.url, server.user, server.password);
         
-        if (currentStep % 20 === 0) {
-          addLog(`[INFO] Escaneo en progreso: ${Math.round(progress)}%. Canales encontrados: ${newTotal.toLocaleString()}`, 'info');
-        }
+        const channelsFound = streams.length;
+        grandTotal += channelsFound;
+
+        addLog(`[SUCCESS] Escaneo de ${server.name} completado. ${channelsFound.toLocaleString()} canales encontrados.`, 'success');
+        const scanDate = new Date().toLocaleString('es-ES');
         
-        return newTotal;
-      });
+        setServers(prevServers => prevServers.map(s =>
+          s.id === server.id 
+            ? { ...s, activeChannels: channelsFound, lastScan: scanDate, status: 'Online' } 
+            : s
+        ));
+        
+        // Use functional update to get the latest state
+        setTotalChannelsFound(prevTotal => prevTotal + channelsFound);
+        
+        // Simple progress update
+        setScanProgress(prev => prev + (100 / serversToScan.length));
 
-      setMemoryUsage(150 + Math.floor(Math.random() * 50)); 
-
-      if (progress >= 100) {
-        clearInterval(scanInterval);
-        setIsScanning(false);
-        setEta('00:00:00');
-        onComplete(totalChannelsToFind);
-        setCacheSize(prev => prev + (Math.random() * 5));
+      } catch (error: any) {
+        addLog(`[ERROR] Falló el escaneo para ${server.name}: ${error.message}`, 'error');
+        setServers(prevServers => prevServers.map(s =>
+          s.id === server.id ? { ...s, status: 'Error' } : s
+        ));
+         toast({
+          variant: "destructive",
+          title: "Error de Escaneo",
+          description: `No se pudo conectar con el servidor: ${server.name}`,
+        });
       }
-    }, intervalTime);
+    }
+
+    const scanDuration = (Date.now() - scanStartTime) / 1000;
+    addLog(`[SUCCESS] Escaneo completado en ${scanDuration.toFixed(2)} segundos. Total de canales encontrados: ${grandTotal.toLocaleString()}`, 'success');
+    
+    setIsScanning(false);
+    setScanProgress(100);
+    setEta('00:00:00');
+    setCacheSize(prev => prev + (Math.random() * 5));
   };
 
 
@@ -101,50 +126,16 @@ export default function DashboardPage() {
     const serverToScan = servers.find(s => s.id === serverId);
     if (!serverToScan) return;
 
-    addLog(`[INFO] Iniciando escaneo del servidor: ${serverToScan.name}...`, 'info');
-
     // Reset channels for the specific server and update total
     setTotalChannelsFound(prev => prev - (serverToScan.activeChannels || 0));
-    setServers(prevServers => prevServers.map(s => 
-      s.id === serverId ? { ...s, activeChannels: 0, status: 'Scanning' } : s
-    ));
-
-    const channelsPerServer = Math.floor(40127 / servers.length) || 40127;
-
-    runScanSimulation((channelsFound) => {
-      addLog(`[SUCCESS] Escaneo de ${serverToScan.name} completado. Total de canales encontrados: ${channelsFound.toLocaleString()}`, 'success');
-      const scanDate = new Date().toLocaleString('es-ES');
-      setServers(prevServers => prevServers.map(s =>
-        s.id === serverId 
-          ? { ...s, activeChannels: channelsFound, lastScan: scanDate, status: 'Online' } 
-          : s
-      ));
-    }, channelsPerServer);
+    
+    runScan([serverToScan]);
   };
 
 
   const handleScanAll = () => {
     if (isScanning || servers.length === 0) return;
-
-    addLog('[INFO] Iniciando escaneo de todos los servidores...', 'info');
-
-    // Reiniciar canales de cada servidor y el contador global antes de escanear
-    setTotalChannelsFound(0);
-    setServers(prevServers => prevServers.map(s => ({ ...s, activeChannels: 0, status: 'Scanning' })));
-    
-    runScanSimulation((totalChannelsToFind) => {
-        addLog(`[SUCCESS] Escaneo completado. Total de canales encontrados: ${totalChannelsToFind.toLocaleString()}`, 'success');
-        const scanDate = new Date().toLocaleString('es-ES');
-        const channelsPerServer = Math.floor(totalChannelsToFind / servers.length) || 0;
-        setServers(prevServers => prevServers.map(s => ({
-          ...s,
-          activeChannels: channelsPerServer,
-          lastScan: scanDate,
-          status: 'Online'
-        })));
-        // Ensure the final count is accurate
-        setTotalChannelsFound(totalChannelsToFind);
-    });
+    runScan(servers);
   };
 
   const addServer = (server: Omit<Server, 'id' | 'status' | 'activeChannels' | 'lastScan'>) => {
@@ -210,7 +201,7 @@ export default function DashboardPage() {
               progress={scanProgress} 
               eta={eta} 
               memoryUsage={memoryUsage}
-              totalChannels={totalChannelsFound} 
+              totalChannels={totalChannels} 
             />
           </div>
         </div>
@@ -223,12 +214,12 @@ export default function DashboardPage() {
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <AiOptimizer />
-          <ChannelExporter channelCount={totalChannelsFound} />
+          <ChannelExporter channelCount={totalChannels} />
         </div>
 
         <StatsDashboard 
             serverCount={servers.length} 
-            channelCount={totalChannelsFound}
+            channelCount={totalChannels}
             lastScanTime={lastScan}
             cacheSize={cacheSize}
         />
