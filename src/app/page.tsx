@@ -59,8 +59,7 @@ export default function DashboardPage() {
     const intervalTime = 250;
     const steps = totalDuration / intervalTime;
     let currentStep = 0;
-    let channelsFoundSoFar = 0;
-
+    
     const scanInterval = setInterval(() => {
       currentStep++;
       const progress = (currentStep / steps) * 100;
@@ -73,13 +72,18 @@ export default function DashboardPage() {
       setEta(`00:${mm}:${ss}`);
       
       const newChannelsThisStep = Math.floor(Math.random() * (totalChannelsToFind / steps) * 2);
-      channelsFoundSoFar += newChannelsThisStep;
-      setTotalChannelsFound(prevTotal => prevTotal + newChannelsThisStep);
-      setMemoryUsage(150 + Math.floor(Math.random() * 50)); 
 
-      if (currentStep % 20 === 0) {
-        addLog(`[INFO] Escaneo en progreso: ${Math.round(progress)}%. Canales encontrados: ${totalChannelsFound.toLocaleString()}`, 'info');
-      }
+      setTotalChannelsFound(prevTotal => {
+        const newTotal = prevTotal + newChannelsThisStep;
+        
+        if (currentStep % 20 === 0) {
+          addLog(`[INFO] Escaneo en progreso: ${Math.round(progress)}%. Canales encontrados: ${newTotal.toLocaleString()}`, 'info');
+        }
+        
+        return newTotal;
+      });
+
+      setMemoryUsage(150 + Math.floor(Math.random() * 50)); 
 
       if (progress >= 100) {
         clearInterval(scanInterval);
