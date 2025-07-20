@@ -7,7 +7,7 @@ import { Loading } from '@/components/ui/Loading';
 import { useServersStore } from '@/store/servers';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLogsStore } from '@/store/logs';
-import { IPTVCore } from '@/lib/iptv-core';
+import { IPTVCore } from '@/lib/iptv-core.ts';
 import { IPTVErrorHandler } from '@/lib/error-handler';
 import { SERVER_STATUS_COLORS } from '@/lib/constants';
 import type { IPTVServer, ConnectionStatus } from '@/lib/types';
