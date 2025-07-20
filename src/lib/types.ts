@@ -7,8 +7,8 @@ export interface Server {
   user: string;
   password?: string;
   status: ServerStatus;
-  activeChannels?: number;
-  lastScan?: string;
+  activeChannels: number;
+  lastScan: string;
 }
 
 export interface LogEntry {

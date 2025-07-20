@@ -4,10 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Stats } from '@/lib/types';
 import { Server, Tv, Clock, HardDrive } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useServersStore } from '@/store/servers';
 
-export function StatsDashboard({ serverCount, channelCount, lastScanTime, cacheSize }: Stats) {
+
+export function StatsDashboard({ serverCount, channelCount, lastScanTime }: Omit<Stats, 'cacheSize'>) {
   
   const [isClient, setIsClient] = useState(false);
+  const cacheSize = useServersStore(s => s.cacheSize);
+
   useEffect(() => {
     setIsClient(true);
   }, []);
