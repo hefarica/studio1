@@ -21,7 +21,7 @@ const initialServers: Server[] = [
     name: 'EVESTV IP TV', 
     url: 'http://126954339934.d4ktv.info:80', 
     status: 'Online', 
-    activeChannels: 759,
+    activeChannels: 0,
     user: 'uqb3fbu3b',
     password: 'Password123',
     lastScan: 'Never',
@@ -48,7 +48,7 @@ export default function DashboardPage() {
     setTotalChannelsFound(initialTotalChannels);
   }, [servers]);
 
-  const addLog = useCallback((message: string, level: 'info' | 'warning' | 'error' | 'success') => {
+ const addLog = useCallback((message: string, level: 'info' | 'warning' | 'error' | 'success') => {
     const timestamp = new Date();
     const timeString = `[${timestamp.getHours().toString().padStart(2,'0')}:${timestamp.getMinutes().toString().padStart(2,'0')}:${timestamp.getSeconds().toString().padStart(2,'0')}]`;
     const formattedMessage = `${timeString} ${message}`;
@@ -63,6 +63,7 @@ export default function DashboardPage() {
     setEta('Calculating...');
     addLog(`[INFO] Starting real scan for ${serversToScan.length} server(s).`, 'info');
 
+    // Reset channel counts for the servers being scanned.
     const channelsToReset = servers.reduce((acc, s) => {
       if (serversToScan.some(sts => sts.id === s.id)) {
           return acc + (s.activeChannels || 0);
@@ -76,39 +77,40 @@ export default function DashboardPage() {
     let grandTotal = 0;
     const scanStartTime = Date.now();
 
-    for (const server of serversToScan) {
-      try {
-        addLog(`[INFO] Fetching data from ${server.name}...`, 'info');
-        const streams = await fetchXtreamCodesData(server.url, server.user, server.password);
-        
-        const channelsFound = streams.length;
-        grandTotal += channelsFound;
+    for (let i = 0; i < serversToScan.length; i++) {
+        const server = serversToScan[i];
+        try {
+            addLog(`[INFO] Fetching data from ${server.name}...`, 'info');
+            const streams = await fetchXtreamCodesData(server.url, server.user, server.password);
+            
+            const channelsFound = streams.length;
+            grandTotal += channelsFound;
 
-        addLog(`[SUCCESS] Scan of ${server.name} completed. ${channelsFound.toLocaleString()} channels found.`, 'success');
-        const scanDate = new Date().toLocaleString('en-US');
-        
-        setServers(prevServers => prevServers.map(s =>
-          s.id === server.id 
-            ? { ...s, activeChannels: channelsFound, lastScan: scanDate, status: 'Online' } 
-            : s
-        ));
-        
-        setTotalChannelsFound(prevTotal => prevTotal + channelsFound);
-        
-        const currentProgress = (serversToScan.indexOf(server) + 1) / serversToScan.length * 100;
-        setScanProgress(currentProgress);
+            addLog(`[SUCCESS] Scan of ${server.name} completed. ${channelsFound.toLocaleString()} channels found.`, 'success');
+            const scanDate = new Date().toLocaleString('en-US');
+            
+            setServers(prevServers => prevServers.map(s =>
+            s.id === server.id 
+                ? { ...s, activeChannels: channelsFound, lastScan: scanDate, status: 'Online' } 
+                : s
+            ));
+            
+            setTotalChannelsFound(prevTotal => prevTotal + channelsFound);
+            
+            const currentProgress = (i + 1) / serversToScan.length * 100;
+            setScanProgress(currentProgress);
 
-      } catch (error: any) {
-        addLog(`[ERROR] Scan failed for ${server.name}: ${error.message}`, 'error');
-        setServers(prevServers => prevServers.map(s =>
-          s.id === server.id ? { ...s, status: 'Error' } : s
-        ));
-         toast({
-          variant: "destructive",
-          title: "Scan Error",
-          description: `Could not connect to server ${server.name}: ${error.message}`,
-        });
-      }
+        } catch (error: any) {
+            addLog(`[ERROR] Scan failed for ${server.name}: ${error.message}`, 'error');
+            setServers(prevServers => prevServers.map(s =>
+            s.id === server.id ? { ...s, status: 'Error' } : s
+            ));
+            toast({
+                variant: "destructive",
+                title: `Scan Error for ${server.name}`,
+                description: error.message,
+            });
+        }
     }
 
     const scanDuration = (Date.now() - scanStartTime) / 1000;
@@ -162,13 +164,24 @@ export default function DashboardPage() {
     ? new Date(Math.max(...servers
         .map(s => {
             if (!s.lastScan || s.lastScan === 'Never') return 0;
+            // Robust date parsing for 'M/D/YYYY, HH:MM:SS' format
             const parts = s.lastScan.split(', ');
             if (parts.length < 2) return 0;
             const dateParts = parts[0].split('/');
-            const timeParts = parts[1].split(':');
+            const timeParts = parts[1].split(/:| /); // Handles both HH:MM:SS and HH:MM:SS AM/PM
             if (dateParts.length < 3 || timeParts.length < 3) return 0;
-            return new Date(+dateParts[2], +dateParts[1] - 1, +dateParts[0], +timeParts[0], +timeParts[1], +timeParts[2]).getTime();
-        })
+            
+            let hours = parseInt(timeParts[0], 10);
+            if (timeParts[3] && timeParts[3].toUpperCase() === 'PM' && hours < 12) {
+                hours += 12;
+            }
+            if (timeParts[3] && timeParts[3].toUpperCase() === 'AM' && hours === 12) {
+                hours = 0;
+            }
+
+            // new Date(year, monthIndex, day, hours, minutes, seconds)
+            return new Date(+dateParts[2], +dateParts[0] - 1, +dateParts[1], hours, +timeParts[1], +timeParts[2]).getTime();
+        }).filter(t => !isNaN(t))
     )).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
     : '--:--:--';
 

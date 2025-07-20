@@ -19,32 +19,35 @@ export async function fetchXtreamCodesData(serverUrl: string, username: string, 
     try {
         const categories = await fetchIptvData({ url: `${baseUrl}&action=get_live_categories` });
 
+        // The API might return an object on auth failure, so we must check for an array.
         if (!Array.isArray(categories)) {
-            console.error('Categories response is not an array or auth failed.', categories);
+            console.error('[Action Error] Categories response is not an array or auth failed:', categories);
             throw new Error('Authentication failed or invalid categories format from server.');
         }
 
         let allStreams: any[] = [];
         for (const category of categories) {
             // As per your logic, skip the 'all' category to avoid duplicates
-            if (category.category_id === 'all' || category.category_id === '0') continue; 
+            if (String(category.category_id) === 'all') continue; 
             
             try {
                 const streams = await fetchIptvData({ url: `${baseUrl}&action=get_live_streams&category_id=${category.category_id}` });
                 if (Array.isArray(streams)) {
                     allStreams = [...allStreams, ...streams];
                 } else {
-                     console.warn(`Could not fetch streams for category ${category.category_name}. The response was not an array.`);
+                     // This happens if a category is empty, which is normal.
+                     console.warn(`[Action Warn] Could not fetch streams for category ${category.category_name}. The response was not an array.`);
                 }
             } catch (e: any) {
-                // As per your logic, continue scanning other categories if one fails
-                console.warn(`Skipping category "${category.category_name}" due to error:`, e.message);
+                // Also normal, some categories might be protected or empty, we continue scanning others.
+                console.warn(`[Action Warn] Skipping category "${category.category_name}" due to error:`, e.message);
             }
         }
         
         return allStreams;
     } catch (error: any) {
-        console.error('Error fetching Xtream Codes data:', error.message);
+        // This is a critical failure, e.g., could not connect at all.
+        console.error('[Action Error] Critical error fetching Xtream Codes data:', error.message);
         throw new Error(`Failed to connect to the IPTV server. Please check the URL and credentials. Details: ${error.message}`);
     }
 }
