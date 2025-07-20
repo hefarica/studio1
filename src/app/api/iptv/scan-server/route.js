@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import pLimit from 'p-limit';
 import { CONFIG } from '@/lib/constants';
 
+export const runtime = 'nodejs'; // Force Node.js runtime
+
 async function makeRequest(fullUrl) {
     const res = await fetch(fullUrl, {
         method: 'GET',
