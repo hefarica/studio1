@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useCallback } from 'react';
@@ -13,6 +12,7 @@ import { IPTVErrorHandler } from '@/lib/error-handler';
 import { SERVER_STATUS_COLORS } from '@/lib/constants';
 import type { IPTVServer, ConnectionStatus } from '@/lib/types';
 import { clsx } from 'clsx';
+import { useIPTVCore } from '@/hooks/useIPTVCore';
 
 export const ServersList: React.FC = () => {
   const { servers, removeServer, updateServer } = useServersStore();
@@ -20,7 +20,7 @@ export const ServersList: React.FC = () => {
   const { addLog } = useLogsStore();
   
   const [connectionStates, setConnectionStates] = useState<Record<string, ConnectionStatus>>({});
-  const [iptvCore] = useState(() => new IPTVCore());
+  const { iptvCore, isReady } = useIPTVCore();
 
   const updateConnectionState = useCallback((serverId: string, updates: Partial<ConnectionStatus>) => {
     setConnectionStates(prev => ({
@@ -30,6 +30,11 @@ export const ServersList: React.FC = () => {
   }, []);
 
   const testServerConnection = useCallback(async (server: IPTVServer) => {
+    if (!isReady || !iptvCore) {
+      error('Sistema no listo', 'IPTVCore aún no está disponible');
+      return;
+    }
+    
     if (connectionStates[server.id]?.isConnecting) {
       warning('Conexión en progreso', `Ya se está probando la conexión a ${server.name}`);
       return;
@@ -127,9 +132,21 @@ export const ServersList: React.FC = () => {
         }, retryDelay);
       }
     }
-  }, [connectionStates, iptvCore, addLog, error, success, updateConnectionState, updateServer, warning]);
+  }, [connectionStates, iptvCore, isReady, addLog, error, success, updateConnectionState, updateServer, warning]);
 
   const startServerScan = useCallback(async (server: IPTVServer) => {
+    if (!isReady || !iptvCore) {
+      error('Error del sistema', 'IPTVCore no está disponible');
+      addLog('❌ IPTVCore no está instanciado', 'error');
+      return;
+    }
+
+    if (typeof iptvCore.scanServer !== 'function') {
+      error('Error del sistema', 'Método scanServer no disponible');
+      addLog('❌ Método scanServer no es una función', 'error');
+      return;
+    }
+
     updateServer(server.id, { status: 'scanning' });
     addLog(`🚀 Iniciando escaneo completo de ${server.name}`, 'info', { serverId: server.id });
     
@@ -177,7 +194,7 @@ export const ServersList: React.FC = () => {
       error('Error de escaneo', `${server.name}: ${err.message}`);
       addLog(`💥 ${server.name}: Error en escaneo - ${err.message}`, 'error', { serverId: server.id });
     }
-  }, [addLog, error, iptvCore, success, updateServer]);
+  }, [addLog, error, iptvCore, isReady, success, updateServer]);
 
   const handleRemoveServer = (server: IPTVServer) => {
     if (confirm(`¿Estás seguro de eliminar "${server.name}"?`)) {
