@@ -5,6 +5,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CardDescription
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,8 +20,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Server as ServerIcon, Trash2, Search, Loader } from 'lucide-react';
-import type { Server } from '@/lib/types';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Server as ServerIcon, Trash2, Search, Loader, Circle, CheckCircle, AlertTriangle } from 'lucide-react';
+import type { Server, ServerStatus } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 type ServerListProps = {
   servers: Server[];
@@ -29,68 +32,94 @@ type ServerListProps = {
   isScanning: boolean;
 };
 
+const statusConfig: Record<ServerStatus, { icon: React.ElementType, color: string, label: string }> = {
+    Online: { icon: CheckCircle, color: 'text-green-500', label: 'Online' },
+    Offline: { icon: AlertTriangle, color: 'text-gray-500', label: 'Offline' },
+    Scanning: { icon: Loader, color: 'text-blue-500 animate-spin', label: 'Scanning' },
+    Error: { icon: AlertTriangle, color: 'text-red-500', label: 'Error' }
+}
+
 export function ServerList({ servers, onScanServer, onDeleteServer, isScanning }: ServerListProps) {
   return (
-    <Card className="bg-card shadow-lg rounded-lg">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <ServerIcon className="h-5 w-5" />
-          Servidores Configurados
-        </CardTitle>
-        {servers.length > 0 && (
-          <Badge variant="default">{servers.length} servidor(es)</Badge>
-        )}
+    <Card className="shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-lg">Configured Servers</CardTitle>
+        <CardDescription>Manage and monitor your IPTV servers.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {servers.map(server => (
-            <div key={server.id} className="flex items-center justify-between p-4 bg-background/50 rounded-md">
-              <div className="flex-1">
-                <h3 className="font-bold text-accent">{server.name}</h3>
-                <p className="text-sm text-muted-foreground">{server.url}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Usuario: {server.user} | {server.activeChannels?.toLocaleString('es-ES')} canales | Último escaneo: {server.lastScan}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="text-primary hover:bg-primary/10 hover:text-primary/80"
-                  onClick={() => onScanServer(server.id)}
-                  disabled={isScanning}
-                >
-                  {isScanning && server.status === 'Scanning' ? <Loader className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
-                </Button>
-                 <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 hover:text-destructive/80" disabled={isScanning}>
-                        <Trash2 className="h-5 w-5" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Esta acción no se puede deshacer. Esto eliminará permanentemente la configuración del servidor para "{server.name}".
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => onDeleteServer(server.id)}
-                          className="bg-destructive hover:bg-destructive/90"
+          {servers.map(server => {
+             const StatusIcon = statusConfig[server.status].icon;
+             const statusColor = statusConfig[server.status].color;
+
+             return (
+              <div key={server.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                     <StatusIcon className={cn("h-4 w-4", statusColor)} />
+                     <h3 className="font-semibold text-primary">{server.name}</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{server.url}</p>
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium">{server.activeChannels?.toLocaleString('en-US')}</span> channels | Last scan: {server.lastScan}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                         <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => onScanServer(server.id)}
+                          disabled={isScanning}
+                          aria-label={`Scan ${server.name}`}
                         >
-                          Eliminar
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                          {isScanning && server.status === 'Scanning' ? <Loader className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Scan Server</TooltipContent>
+                    </Tooltip>
+                     <AlertDialog>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" disabled={isScanning} aria-label={`Delete ${server.name}`}>
+                                <Trash2 className="h-5 w-5" />
+                              </Button>
+                            </AlertDialogTrigger>
+                           </TooltipTrigger>
+                           <TooltipContent>Delete Server</TooltipContent>
+                        </Tooltip>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This action cannot be undone. This will permanently delete the server configuration for "{server.name}".
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => onDeleteServer(server.id)}
+                              className="bg-destructive hover:bg-destructive/90"
+                            >
+                              Continue
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                  </TooltipProvider>
+                </div>
               </div>
-            </div>
-          ))}
+             )
+          })}
           {servers.length === 0 && (
-            <p className="text-center text-muted-foreground py-4">No hay servidores configurados.</p>
+            <div className="text-center text-muted-foreground py-10 border-2 border-dashed rounded-lg">
+                <ServerIcon className="mx-auto h-12 w-12 text-gray-400" />
+                <h3 className="mt-2 text-sm font-medium">No servers configured</h3>
+                <p className="mt-1 text-sm text-gray-500">Add a server above to get started.</p>
+            </div>
           )}
         </div>
       </CardContent>

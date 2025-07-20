@@ -24,12 +24,12 @@ const initialServers: Server[] = [
     activeChannels: 759,
     user: 'uqb3fbu3b',
     password: 'Password123',
-    lastScan: 'Nunca',
+    lastScan: 'Never',
   },
 ];
 
 const initialLogs: LogEntry[] = [
-    { id: 'log_init', timestamp: new Date(), message: '[INFO] Sistema listo para operar.', level: 'info' },
+    { id: 'log_init', timestamp: new Date(), message: '[INFO] System ready to operate.', level: 'info' },
 ];
 
 export default function DashboardPage() {
@@ -60,23 +60,17 @@ export default function DashboardPage() {
     if (isScanning) return;
     setIsScanning(true);
     setScanProgress(0);
-    setEta('Calculando...');
-    addLog(`[INFO] Iniciando escaneo real para ${serversToScan.length} servidor(es).`, 'info');
+    setEta('Calculating...');
+    addLog(`[INFO] Starting real scan for ${serversToScan.length} server(s).`, 'info');
 
-    // Reset total channels if scanning all, otherwise just subtract the channels of servers being scanned
-    if (serversToScan.length === servers.length) {
-      setTotalChannelsFound(0);
-    } else {
-      const channelsToReset = servers.reduce((acc, s) => {
-        if (serversToScan.some(sts => sts.id === s.id)) {
-            return acc + (s.activeChannels || 0);
-        }
-        return acc;
-      }, 0);
-      setTotalChannelsFound(prev => prev - channelsToReset);
-    }
+    const channelsToReset = servers.reduce((acc, s) => {
+      if (serversToScan.some(sts => sts.id === s.id)) {
+          return acc + (s.activeChannels || 0);
+      }
+      return acc;
+    }, 0);
+    setTotalChannelsFound(prev => Math.max(0, prev - channelsToReset));
     
-    // Set servers to scanning state and reset their individual channel counts
     setServers(prev => prev.map(s => serversToScan.some(sts => sts.id === s.id) ? { ...s, status: 'Scanning', activeChannels: 0 } : s));
 
     let grandTotal = 0;
@@ -84,14 +78,14 @@ export default function DashboardPage() {
 
     for (const server of serversToScan) {
       try {
-        addLog(`[INFO] Obteniendo datos de ${server.name}...`, 'info');
+        addLog(`[INFO] Fetching data from ${server.name}...`, 'info');
         const streams = await fetchXtreamCodesData(server.url, server.user, server.password);
         
         const channelsFound = streams.length;
         grandTotal += channelsFound;
 
-        addLog(`[SUCCESS] Escaneo de ${server.name} completado. ${channelsFound.toLocaleString()} canales encontrados.`, 'success');
-        const scanDate = new Date().toLocaleString('es-ES');
+        addLog(`[SUCCESS] Scan of ${server.name} completed. ${channelsFound.toLocaleString()} channels found.`, 'success');
+        const scanDate = new Date().toLocaleString('en-US');
         
         setServers(prevServers => prevServers.map(s =>
           s.id === server.id 
@@ -105,20 +99,20 @@ export default function DashboardPage() {
         setScanProgress(currentProgress);
 
       } catch (error: any) {
-        addLog(`[ERROR] Falló el escaneo para ${server.name}: ${error.message}`, 'error');
+        addLog(`[ERROR] Scan failed for ${server.name}: ${error.message}`, 'error');
         setServers(prevServers => prevServers.map(s =>
           s.id === server.id ? { ...s, status: 'Error' } : s
         ));
          toast({
           variant: "destructive",
-          title: "Error de Escaneo",
-          description: `No se pudo conectar con el servidor ${server.name}: ${error.message}`,
+          title: "Scan Error",
+          description: `Could not connect to server ${server.name}: ${error.message}`,
         });
       }
     }
 
     const scanDuration = (Date.now() - scanStartTime) / 1000;
-    addLog(`[SUCCESS] Escaneo completado en ${scanDuration.toFixed(2)} segundos. Total de canales encontrados: ${grandTotal.toLocaleString()}`, 'success');
+    addLog(`[SUCCESS] Scan completed in ${scanDuration.toFixed(2)} seconds. Total channels found: ${grandTotal.toLocaleString()}`, 'success');
     
     setIsScanning(false);
     setScanProgress(100);
@@ -147,10 +141,10 @@ export default function DashboardPage() {
       id: `server_${Date.now()}`,
       status: 'Online',
       activeChannels: 0,
-      lastScan: 'Nunca',
+      lastScan: 'Never',
     };
     setServers(prev => [...prev, newServer]);
-    addLog(`[INFO] Servidor agregado: ${server.name}`, 'info');
+    addLog(`[INFO] Server added: ${server.name}`, 'info');
   };
 
   const deleteServer = (id: string) => {
@@ -158,16 +152,16 @@ export default function DashboardPage() {
     if (serverToDelete) {
       setTotalChannelsFound(prev => prev - (serverToDelete.activeChannels || 0));
       setServers(prev => prev.filter(s => s.id !== id));
-      addLog(`[WARN] Servidor eliminado: ${serverToDelete.name}`, 'warning');
+      addLog(`[WARN] Server deleted: ${serverToDelete.name}`, 'warning');
     }
   };
   
   const totalChannels = servers.reduce((acc, server) => acc + (server.activeChannels || 0), 0);
   
-  const lastScan = servers.length > 0 && servers.some(s => s.lastScan && s.lastScan !== 'Nunca')
+  const lastScan = servers.length > 0 && servers.some(s => s.lastScan && s.lastScan !== 'Never')
     ? new Date(Math.max(...servers
         .map(s => {
-            if (!s.lastScan || s.lastScan === 'Nunca') return 0;
+            if (!s.lastScan || s.lastScan === 'Never') return 0;
             const parts = s.lastScan.split(', ');
             if (parts.length < 2) return 0;
             const dateParts = parts[0].split('/');
@@ -175,14 +169,14 @@ export default function DashboardPage() {
             if (dateParts.length < 3 || timeParts.length < 3) return 0;
             return new Date(+dateParts[2], +dateParts[1] - 1, +dateParts[0], +timeParts[0], +timeParts[1], +timeParts[2]).getTime();
         })
-    )).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+    )).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
     : '--:--:--';
 
 
   const handleClearAll = () => {
     setServers([]);
     setTotalChannelsFound(0);
-    addLog('[INFO] Todos los servidores han sido eliminados.', 'info');
+    addLog('[INFO] All servers have been deleted.', 'info');
   }
 
   const handleClearLog = () => {
@@ -194,6 +188,12 @@ export default function DashboardPage() {
       <Header />
       
       <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+        <StatsDashboard 
+            serverCount={servers.length} 
+            channelCount={totalChannelsFound}
+            lastScanTime={lastScan}
+            cacheSize={cacheSize}
+        />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
              <ServerConfig onAddServer={addServer} />
@@ -206,26 +206,19 @@ export default function DashboardPage() {
               memoryUsage={memoryUsage}
               totalChannels={totalChannels} 
             />
+            <ControlPanel 
+              onScanAll={handleScanAll} 
+              onClearAll={handleClearAll}
+              isScanning={isScanning}
+            />
           </div>
         </div>
-        
-        <ControlPanel 
-          onScanAll={handleScanAll} 
-          onClearAll={handleClearAll}
-          isScanning={isScanning}
-        />
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <AiOptimizer />
           <ChannelExporter channelCount={totalChannelsFound} />
         </div>
 
-        <StatsDashboard 
-            serverCount={servers.length} 
-            channelCount={totalChannelsFound}
-            lastScanTime={lastScan}
-            cacheSize={cacheSize}
-        />
         <ActivityLogs logs={logs} onClearLog={handleClearLog} />
       </main>
     </div>

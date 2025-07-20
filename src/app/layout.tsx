@@ -6,8 +6,8 @@ import { Toaster } from "@/components/ui/toaster";
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "Constructor IPTV Pro Multi-Servidor",
-  description: "Sistema Inteligente para el manejo industrial de datasets IPTV masivos.",
+  title: "IPTV Genius Scanner",
+  description: "Intelligent system for managing massive IPTV datasets.",
 };
 
 export default function RootLayout({
@@ -16,7 +16,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className="dark" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
@@ -29,7 +29,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className={`font-body antialiased ${inter.variable}`}>
+      <body className={`font-sans antialiased ${inter.variable}`}>
         {children}
         <Toaster />
       </body>

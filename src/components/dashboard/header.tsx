@@ -4,19 +4,21 @@ import { MonitorSmartphone } from 'lucide-react';
 
 export function Header() {
   return (
-    <header className="bg-transparent pt-8">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 text-center">
-        <div className="flex items-center justify-center gap-3">
-            <div className="bg-foreground p-2 rounded-md">
-                <MonitorSmartphone className="h-6 w-6 text-background" />
-            </div>
-            <h1 className="text-3xl font-bold text-foreground">
-              Constructor IPTV Pro Multi-Servidor - Sistema Inteligente
+    <header className="bg-transparent py-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
+        <div className="flex items-center justify-center gap-4">
+          <div className="bg-primary p-3 rounded-lg shadow-md">
+            <MonitorSmartphone className="h-8 w-8 text-primary-foreground" />
+          </div>
+          <div className='text-left'>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+              IPTV Genius Scanner
             </h1>
+            <p className="text-muted-foreground mt-1">
+              AI-powered server scanning and optimization
+            </p>
+          </div>
         </div>
-        <p className="text-muted-foreground mt-2">
-            Base de datos incremental con cache inteligente
-        </p>
       </div>
     </header>
   );

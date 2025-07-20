@@ -11,22 +11,22 @@ type ControlPanelProps = {
 
 export function ControlPanel({ onScanAll, onClearAll, isScanning }: ControlPanelProps) {
   return (
-    <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-4">
       <Button 
         onClick={onScanAll} 
         size="lg" 
-        className="h-14 text-lg bg-success-color hover:bg-success-color/90 text-white"
+        className="h-12 text-base"
         disabled={isScanning}
       >
         {isScanning ? (
           <>
             <Loader className="mr-2 h-5 w-5 animate-spin" />
-            Escaneando...
+            Scanning...
           </>
         ) : (
           <>
             <ScanLine className="mr-2 h-5 w-5" />
-            Escanear Todos los Servidores
+            Scan All Servers
           </>
         )}
       </Button>
@@ -34,11 +34,11 @@ export function ControlPanel({ onScanAll, onClearAll, isScanning }: ControlPanel
         onClick={onClearAll} 
         size="lg" 
         variant="destructive" 
-        className="h-14 text-lg bg-error-color hover:bg-error-color/90 text-white"
+        className="h-12 text-base"
         disabled={isScanning}
       >
         <Trash2 className="mr-2 h-5 w-5" />
-        Limpiar Todos
+        Clear All
       </Button>
     </div>
   );

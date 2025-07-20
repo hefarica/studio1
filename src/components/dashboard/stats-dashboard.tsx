@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Stats } from '@/lib/types';
 import { Server, Tv, Clock, HardDrive } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -14,38 +14,37 @@ export function StatsDashboard({ serverCount, channelCount, lastScanTime, cacheS
 
   const stats = [
     { 
-      label: 'SERVIDORES', 
+      label: 'Servers', 
       value: serverCount, 
       icon: Server,
-      'data-ai-hint': 'server icon'
     },
     { 
-      label: 'CANALES', 
-      value: isClient ? channelCount.toLocaleString('es-ES') : '...', 
+      label: 'Channels', 
+      value: isClient ? channelCount.toLocaleString('en-US') : '...', 
       icon: Tv,
-      'data-ai-hint': 'television screen'
     },
     { 
-      label: 'ÚLTIMO ESCANEO', 
+      label: 'Last Scan', 
       value: lastScanTime, 
       icon: Clock,
-      'data-ai-hint': 'clock time'
     },
     { 
-      label: 'CACHE', 
+      label: 'Cache Size', 
       value: isClient ? `${cacheSize.toFixed(1)} MB` : '...', 
       icon: HardDrive,
-      'data-ai-hint': 'hard drive'
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {stats.map((stat, index) => (
-        <Card key={index} className="bg-card shadow-lg rounded-lg text-center p-4">
-          <CardContent className="p-0 flex flex-col items-center justify-center gap-2">
-            <p className="text-2xl font-bold">{stat.value}</p>
-            <p className="text-xs text-muted-foreground uppercase">{stat.label}</p>
+        <Card key={index} className="shadow-sm">
+           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium uppercase text-muted-foreground">{stat.label}</CardTitle>
+            <stat.icon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stat.value}</div>
           </CardContent>
         </Card>
       ))}
