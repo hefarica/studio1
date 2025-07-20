@@ -1,6 +1,5 @@
 import { CONFIG } from './constants';
-import type { IPTVServer } from '@/types/iptv';
-
+import type { IPTVServer } from './types';
 
 export interface IPTVError {
   code: string;
@@ -14,33 +13,18 @@ export interface IPTVError {
 
 export class IPTVErrorHandler {
   private static readonly ERROR_PATTERNS = {
-    // Error 512 - Server Internal Error
     SERVER_512: /512|server.*internal.*error|internal.*server.*error/i,
-    
-    // Unexpected response (nuevo error detectado)
     UNEXPECTED_RESPONSE: /unexpected.*response|invalid.*response|malformed.*response/i,
-    
-    // Connection errors
     CONNECTION_FAILED: /connection.*failed|failed.*connect|connect.*timeout/i,
     TIMEOUT: /timeout|timed.*out/i,
-    NETWORK_ERROR: /network.*error|network.*unreachable/i,
-    
-    // Authentication errors
+    NETWORK_ERROR: /network.*error|network.*unreachable|failed to fetch/i,
     AUTH_FAILED: /authentication.*failed|invalid.*credentials|unauthorized|401/i,
     ACCESS_DENIED: /access.*denied|forbidden|403/i,
-    
-    // Server errors
     NOT_FOUND: /not.*found|404/i,
     SERVICE_UNAVAILABLE: /service.*unavailable|503/i,
     BAD_GATEWAY: /bad.*gateway|502/i,
-    
-    // CORS errors
     CORS_ERROR: /cors.*error|cross.*origin|access-control/i,
-    
-    // URL/Format errors
     INVALID_URL: /invalid.*url|malformed.*url|url.*format/i,
-    
-    // JSON/Parse errors
     PARSE_ERROR: /parse.*error|json.*error|invalid.*json/i,
   };
 
@@ -48,172 +32,73 @@ export class IPTVErrorHandler {
     const errorMessage = typeof error === 'string' ? error : error.message;
     const lowerMessage = errorMessage.toLowerCase();
 
-    if (lowerMessage.includes('error desconocido') || 
-        lowerMessage.includes('unknown.*error') ||
-        lowerMessage.includes('connection.*failed') ||
-        lowerMessage.includes('todos los métodos.*fallaron')) {
-      
-      return {
-        code: 'UNKNOWN_CONNECTION_ERROR',
-        message: 'Error de conectividad con el servidor IPTV',
-        originalError: errorMessage,
-        suggestions: [
-          'Verificar que la URL del servidor sea correcta y esté activa',
-          'Confirmar que las credenciales (usuario/contraseña) sean válidas',
-          'Comprobar que el servidor IPTV esté online y funcional',
-          'Verificar la conectividad a internet',
-          'El servidor podría estar bloqueando requests automáticos',
-          'Probar con un navegador diferente o modo incógnito',
-          'Contactar al proveedor IPTV para verificar el estado del servicio'
-        ],
-        isRetryable: true,
-        retryAfter: 10000, // 10 segundos
-        severity: 'high'
-      };
+    for (const [code, pattern] of Object.entries(this.ERROR_PATTERNS)) {
+      if (pattern.test(lowerMessage)) {
+        return this.getErrorDetails(code as keyof typeof this.ERROR_PATTERNS, errorMessage);
+      }
     }
 
-    // Análisis de patrones de error
-    if (this.ERROR_PATTERNS.SERVER_512.test(lowerMessage)) {
-      return {
-        code: 'SERVER_ERROR_512',
-        message: 'El servidor IPTV está experimentando problemas internos',
-        originalError: errorMessage,
-        suggestions: [
-          'Esperar 2-5 minutos antes de reintentar',
-          'El servidor puede estar sobrecargado temporalmente',
-          'Verificar el estado del servicio con el proveedor',
-          'Los reintentos automáticos están activos'
-        ],
-        isRetryable: true,
-        retryAfter: CONFIG.ERROR_512_BASE_DELAY,
-        severity: 'medium'
-      };
-    }
+    return this.getErrorDetails('UNKNOWN_ERROR', errorMessage);
+  }
 
-    // NUEVO: Manejo del error "unexpected response"
-    if (this.ERROR_PATTERNS.UNEXPECTED_RESPONSE.test(lowerMessage)) {
-      return {
-        code: 'UNEXPECTED_RESPONSE',
-        message: 'Respuesta inesperada del servidor IPTV',
-        originalError: errorMessage,
-        suggestions: [
-          'Verificar que la URL del servidor sea correcta',
-          'Confirmar que las credenciales estén actualizadas',
-          'El servidor podría estar retornando datos en formato incorrecto',
-          'Verificar la conectividad de red',
-          'Probar con un proxy CORS diferente'
-        ],
-        isRetryable: true,
-        retryAfter: 5000,
-        severity: 'medium'
-      };
+  private static getErrorDetails(code: keyof typeof this.ERROR_PATTERNS | 'UNKNOWN_ERROR', originalError: string): IPTVError {
+    switch (code) {
+      case 'SERVER_512':
+        return {
+          code,
+          message: 'El servidor IPTV está experimentando problemas internos (Error 512)',
+          originalError,
+          suggestions: ['Esperar 2-5 minutos antes de reintentar', 'El servidor puede estar sobrecargado', 'Verificar el estado con el proveedor'],
+          isRetryable: true,
+          retryAfter: CONFIG.ERROR_512_BASE_DELAY,
+          severity: 'medium',
+        };
+      case 'NETWORK_ERROR':
+        return {
+            code,
+            message: 'Error de red al conectar con el servidor',
+            originalError,
+            suggestions: ['Verificar la conectividad a internet del servidor', 'El servidor IPTV podría estar offline', 'Revisar firewalls o bloqueos de red'],
+            isRetryable: true,
+            retryAfter: 15000,
+            severity: 'high',
+        }
+      case 'AUTH_FAILED':
+        return {
+          code,
+          message: 'Credenciales incorrectas o expiradas',
+          originalError,
+          suggestions: ['Verificar usuario y contraseña', 'La cuenta podría haber expirado', 'Contactar al proveedor'],
+          isRetryable: false,
+          severity: 'high',
+        };
+      case 'TIMEOUT':
+          return {
+              code: 'TIMEOUT',
+              message: 'Tiempo de espera agotado',
+              originalError,
+              suggestions: ['Conexión a internet lenta', 'Aumentar timeout en configuración', 'Servidor IPTV lento'],
+              isRetryable: true,
+              retryAfter: 8000,
+              severity: 'medium'
+          };
+      default:
+        return {
+          code: 'UNKNOWN_ERROR',
+          message: 'Error desconocido de conexión',
+          originalError,
+          suggestions: ['Verificar URL y credenciales', 'Comprobar conectividad', 'Contactar al proveedor'],
+          isRetryable: true,
+          retryAfter: 10000,
+          severity: 'high',
+        };
     }
-
-    if (this.ERROR_PATTERNS.CONNECTION_FAILED.test(lowerMessage)) {
-      return {
-        code: 'CONNECTION_FAILED',
-        message: 'No se pudo establecer conexión con el servidor',
-        originalError: errorMessage,
-        suggestions: [
-          'Verificar la URL del servidor',
-          'Comprobar la conectividad a internet',
-          'El servidor podría estar fuera de línea',
-          'Verificar configuración de firewall/proxy'
-        ],
-        isRetryable: true,
-        retryAfter: 10000,
-        severity: 'high'
-      };
-    }
-
-    if (this.ERROR_PATTERNS.TIMEOUT.test(lowerMessage)) {
-      return {
-        code: 'TIMEOUT',
-        message: 'Tiempo de espera agotado',
-        originalError: errorMessage,
-        suggestions: [
-          'Conexión a internet lenta o inestable',
-          'Aumentar el tiempo de timeout en configuración',
-          'Verificar latencia de red al servidor',
-          'Considerar usar VPN si hay restricciones regionales'
-        ],
-        isRetryable: true,
-        retryAfter: 8000,
-        severity: 'medium'
-      };
-    }
-
-    if (this.ERROR_PATTERNS.AUTH_FAILED.test(lowerMessage)) {
-      return {
-        code: 'AUTH_FAILED',
-        message: 'Credenciales incorrectas o expiradas',
-        originalError: errorMessage,
-        suggestions: [
-          'Verificar usuario y contraseña',
-          'Las credenciales podrían haber expirado',
-          'Contactar al proveedor IPTV para renovar acceso',
-          'Verificar que la cuenta esté activa'
-        ],
-        isRetryable: false,
-        severity: 'high'
-      };
-    }
-
-    if (this.ERROR_PATTERNS.CORS_ERROR.test(lowerMessage)) {
-      return {
-        code: 'CORS_ERROR',
-        message: 'Error de política CORS',
-        originalError: errorMessage,
-        suggestions: [
-          'El navegador está bloqueando la conexión',
-          'Se utilizarán proxies CORS automáticamente',
-          'Probar en modo incógnito',
-          'Deshabilitar extensiones temporalmente'
-        ],
-        isRetryable: true,
-        retryAfter: 3000,
-        severity: 'low'
-      };
-    }
-
-    if (this.ERROR_PATTERNS.PARSE_ERROR.test(lowerMessage)) {
-      return {
-        code: 'PARSE_ERROR',
-        message: 'Error procesando respuesta del servidor',
-        originalError: errorMessage,
-        suggestions: [
-          'El servidor retornó datos en formato incorrecto',
-          'Verificar que sea un servidor IPTV válido',
-          'Contactar soporte técnico del proveedor',
-          'Probar con diferentes proxies'
-        ],
-        isRetryable: true,
-        retryAfter: 5000,
-        severity: 'medium'
-      };
-    }
-
-    // Error genérico
-    return {
-      code: 'UNKNOWN_ERROR',
-      message: 'Error desconocido de conexión',
-      originalError: errorMessage,
-      suggestions: [
-        'Verificar configuración del servidor',
-        'Comprobar conectividad a internet',
-        'Revisar logs para más detalles',
-        'Contactar soporte técnico si persiste'
-      ],
-      isRetryable: true,
-      retryAfter: 5000,
-      severity: 'medium'
-    };
   }
 
   static async handleRetry<T>(
     operation: () => Promise<T>,
     context: { serverName: string; operationType: string },
-    maxAttempts = 5
+    maxAttempts = 3
   ): Promise<T> {
     let lastError: IPTVError | null = null;
 
@@ -221,139 +106,26 @@ export class IPTVErrorHandler {
       try {
         console.log(`[RETRY ${attempt}/${maxAttempts}] ${context.serverName} - ${context.operationType}`);
         return await operation();
-        
       } catch (error: any) {
         const analyzedError = this.analyzeError(error, { serverName: context.serverName });
         lastError = analyzedError;
         
         console.log(`❌ [ATTEMPT ${attempt}] ${context.serverName}: ${analyzedError.message}`);
         
-        // Si no es reintentable, fallar inmediatamente
-        if (!analyzedError.isRetryable) {
-          throw new Error(`${analyzedError.code}: ${analyzedError.message}`);
-        }
-        
-        // Si es el último intento, no esperar
-        if (attempt === maxAttempts) {
+        if (!analyzedError.isRetryable || attempt === maxAttempts) {
           break;
         }
         
-        // Calcular delay basado en el tipo de error
-        let delay = analyzedError.retryAfter || 5000;
-        
-        // Backoff exponencial para errores específicos
-        if (['SERVER_ERROR_512', 'UNEXPECTED_RESPONSE'].includes(analyzedError.code)) {
-          delay = Math.min(delay * Math.pow(1.5, attempt - 1), CONFIG.ERROR_512_MAX_DELAY);
-        }
-        
-        console.log(`⏳ [WAIT] ${context.serverName}: Esperando ${Math.round(delay/1000)}s (${analyzedError.code})`);
-        await this.sleep(delay);
+        const delay = (analyzedError.retryAfter || 5000) * Math.pow(1.5, attempt - 1);
+        const cappedDelay = Math.min(delay, CONFIG.ERROR_512_MAX_DELAY);
+
+        console.log(`⏳ [WAIT] ${context.serverName}: Esperando ${Math.round(cappedDelay/1000)}s`);
+        await new Promise(resolve => setTimeout(resolve, cappedDelay));
       }
     }
 
     throw new Error(
       `${lastError?.code || 'RETRY_FAILED'}: ${lastError?.message || 'Falló después de múltiples intentos'}`
     );
-  }
-
-  private static sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  static getErrorIcon(errorCode: string): string {
-    const iconMap: Record<string, string> = {
-      'SERVER_ERROR_512': '⚠️',
-      'UNEXPECTED_RESPONSE': '🔄',
-      'CONNECTION_FAILED': '🚫',
-      'TIMEOUT': '⏰',
-      'AUTH_FAILED': '🔐',
-      'CORS_ERROR': '🌐',
-      'PARSE_ERROR': '📄',
-      'UNKNOWN_ERROR': '❓',
-    };
-    
-    return iconMap[errorCode] || '⚠️';
-  }
-
-  static getErrorColor(severity: IPTVError['severity']): string {
-    const colorMap = {
-      'low': 'text-blue-400',
-      'medium': 'text-warning-400',
-      'high': 'text-error-400',
-      'critical': 'text-error-500',
-    };
-    
-    return colorMap[severity];
-  }
-  
-  static async diagnoseConnection(server: IPTVServer): Promise<{
-    canReachUrl: boolean;
-    canResolveHost: boolean;
-    responseTime: number;
-    suggestions: string[];
-  }> {
-    console.log(`🩺 [DIAGNOSE] Diagnosticando conexión a ${server.name}`);
-    
-    const startTime = Date.now();
-    let canReachUrl = false;
-    let canResolveHost = false;
-    const suggestions: string[] = [];
-
-    try {
-      // Test básico de conectividad
-      const testUrl = new URL(server.url);
-      console.log(`🔍 [DIAGNOSE] Host: ${testUrl.hostname}, Puerto: ${testUrl.port || 80}`);
-      
-      try {
-        const basicTest = await fetch(server.url, {
-          method: 'HEAD',
-          mode: 'no-cors', // Para evitar CORS en test básico
-          signal: AbortSignal.timeout(5000)
-        });
-        
-        canReachUrl = true;
-        console.log(`✅ [DIAGNOSE] URL es alcanzable`);
-        
-      } catch (reachError: any) {
-        console.log(`❌ [DIAGNOSE] URL no alcanzable: ${reachError.message}`);
-        
-        if (reachError.message.includes('CORS')) {
-          suggestions.push('Servidor requiere proxy CORS (normal para IPTV)');
-          canResolveHost = true; // CORS significa que el host existe
-        } else if (reachError.message.includes('timeout')) {
-          suggestions.push('Timeout de conexión - servidor lento o inaccesible');
-        } else if (reachError.message.includes('network')) {
-          suggestions.push('Error de red - verificar conectividad a internet');
-        }
-      }
-
-      // Test de resolución DNS
-      try {
-        const dnsTest = await fetch(`https://dns.google/resolve?name=${testUrl.hostname}&type=A`);
-        if (dnsTest.ok) {
-          canResolveHost = true;
-          console.log(`✅ [DIAGNOSE] Host DNS resuelve correctamente`);
-        }
-      } catch (dnsError) {
-        console.log(`⚠️ [DIAGNOSE] No se pudo verificar DNS`);
-        suggestions.push('Posible problema de resolución DNS');
-      }
-
-    } catch (error: any) {
-      console.log(`❌ [DIAGNOSE] Error en diagnóstico: ${error.message}`);
-      suggestions.push('Error general en diagnóstico de red');
-    }
-
-    const responseTime = Date.now() - startTime;
-    
-    const diagnosis = {
-      canReachUrl,
-      canResolveHost,
-      responseTime,
-      suggestions
-    };
-    
-    console.log(`🩺 [DIAGNOSE] Resultado:`, diagnosis);
-    return diagnosis;
   }
 }
