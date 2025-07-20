@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { Server, LogEntry } from '@/lib/types';
 import { Header } from '@/components/dashboard/header';
 import { ServerList } from '@/components/dashboard/server-list';
@@ -41,7 +41,8 @@ export default function DashboardPage() {
     const timestamp = new Date();
     const timeString = `[${timestamp.getHours().toString().padStart(2,'0')}:${timestamp.getMinutes().toString().padStart(2,'0')}:${timestamp.getSeconds().toString().padStart(2,'0')}]`;
     const formattedMessage = `${timeString} ${message}`;
-    setLogs(prev => [{ id: `log${Date.now()}`, timestamp: timestamp, message: formattedMessage, level }, ...prev].slice(0, 100));
+    const newLogId = `log${Date.now()}${Math.random()}`;
+    setLogs(prev => [{ id: newLogId, timestamp: timestamp, message: formattedMessage, level }, ...prev].slice(0, 100));
   }, []);
 
   const handleScanAll = () => {
@@ -65,7 +66,6 @@ export default function DashboardPage() {
       const etaDate = new Date(remainingTime);
       const mm = String(etaDate.getUTCMinutes()).padStart(2, '0');
       const ss = String(etaDate.getUTCSeconds()).padStart(2, '0');
-      const ms = String(etaDate.getUTCMilliseconds()).padStart(3, '0').substring(0,2);
       setEta(`00:${mm}:${ss}`);
       
       // Simulate finding channels and memory usage
@@ -116,16 +116,19 @@ export default function DashboardPage() {
   };
   
   const totalChannels = servers.reduce((acc, server) => acc + (server.activeChannels || 0), 0);
-  const lastScan = servers.length > 0 ? servers.reduce((latest, s) => {
-      // Basic date parsing, might need adjustment for the exact format
-      const parts = s.lastScan?.split(', ');
-      if (!parts || parts.length < 2) return latest;
-      const dateParts = parts[0].split('/');
-      const timeParts = parts[1].split(':');
-      if (dateParts.length < 3 || timeParts.length < 3) return latest;
-      const sDate = new Date(+dateParts[2], +dateParts[1] - 1, +dateParts[0], +timeParts[0], +timeParts[1], +timeParts[2]);
-      return sDate > latest ? sDate : latest;
-  }, new Date(0)).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '--:--:--';
+  
+  const lastScan = servers.length > 0 ? (
+    servers.map(s => {
+        if (!s.lastScan) return new Date(0);
+        const parts = s.lastScan.split(', ');
+        if (!parts || parts.length < 2) return new Date(0);
+        const dateParts = parts[0].split('/');
+        const timeParts = parts[1].split(':');
+        if (dateParts.length < 3 || timeParts.length < 3) return new Date(0);
+        return new Date(+dateParts[2], +dateParts[1] - 1, +dateParts[0], +timeParts[0], +timeParts[1], +timeParts[2]);
+    }).reduce((latest, sDate) => sDate > latest ? sDate : latest, new Date(0))
+    .toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  ) : '--:--:--';
 
 
   const handleClearAll = () => {
