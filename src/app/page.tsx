@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { Server, LogEntry } from '@/lib/types';
 import { Header } from '@/components/dashboard/header';
 import { ServerList } from '@/components/dashboard/server-list';
@@ -33,11 +33,16 @@ export default function DashboardPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [eta, setEta] = useState('00:00:00');
-  const [totalChannelsFound, setTotalChannelsFound] = useState(5915);
+  const [totalChannelsFound, setTotalChannelsFound] = useState(0);
   const [memoryUsage, setMemoryUsage] = useState(256);
 
+  useEffect(() => {
+    const initialTotalChannels = servers.reduce((acc, server) => acc + (server.activeChannels || 0), 0);
+    setTotalChannelsFound(initialTotalChannels);
+  }, []);
 
-  const addLog = useCallback((message: string, level: 'info' | 'warning' | 'error') => {
+
+  const addLog = useCallback((message: string, level: 'info' | 'warning' | 'error' | 'success') => {
     const timestamp = new Date();
     const timeString = `[${timestamp.getHours().toString().padStart(2,'0')}:${timestamp.getMinutes().toString().padStart(2,'0')}:${timestamp.getSeconds().toString().padStart(2,'0')}]`;
     const formattedMessage = `${timeString} ${message}`;
@@ -50,12 +55,18 @@ export default function DashboardPage() {
 
     setIsScanning(true);
     setScanProgress(0);
+    setTotalChannelsFound(0); // Reiniciar el contador de canales encontrados
     addLog('[INFO] Iniciando escaneo de todos los servidores...', 'info');
 
-    const totalDuration = 15 * 1000; // 15 seconds for simulation
-    const intervalTime = 150;
+    // Reinicia los canales de cada servidor antes de empezar
+    setServers(prevServers => prevServers.map(s => ({ ...s, activeChannels: 0, status: 'Scanning' })));
+
+    const totalDuration = 5 * 60 * 1000; // 5 minutos para la simulación
+    const totalChannelsToFind = 40127;
+    const intervalTime = 250; // Actualizar cada 250ms
     const steps = totalDuration / intervalTime;
     let currentStep = 0;
+    let channelsFoundSoFar = 0;
 
     const scanInterval = setInterval(() => {
       currentStep++;
@@ -68,29 +79,31 @@ export default function DashboardPage() {
       const ss = String(etaDate.getUTCSeconds()).padStart(2, '0');
       setEta(`00:${mm}:${ss}`);
       
-      // Simulate finding channels and memory usage
-      setTotalChannelsFound(prev => prev + Math.floor(Math.random() * 500));
-      setMemoryUsage(256 + Math.floor(Math.random() * 50));
+      // Simular encontrar canales de forma realista
+      const newChannelsThisStep = Math.floor(Math.random() * (totalChannelsToFind / steps) * 2);
+      channelsFoundSoFar += newChannelsThisStep;
+      setTotalChannelsFound(Math.min(channelsFoundSoFar, totalChannelsToFind));
+      setMemoryUsage(150 + Math.floor(Math.random() * 50)); // Simular uso de memoria entre 150-200MB
 
-
-      if (currentStep % 10 === 0) {
-        addLog(`[INFO] Escaneo en progreso: ${Math.round(progress)}%`, 'info');
+      if (currentStep % 20 === 0) {
+        addLog(`[INFO] Escaneo en progreso: ${Math.round(progress)}%. Canales encontrados: ${totalChannelsFound.toLocaleString()}`, 'info');
       }
 
       if (progress >= 100) {
         clearInterval(scanInterval);
         setIsScanning(false);
         setEta('00:00:00');
-        addLog('[SUCCESS] Escaneo completado.', 'info');
-        // Update server stats after scan
+        setTotalChannelsFound(totalChannelsToFind);
+        addLog(`[SUCCESS] Escaneo completado. Total de canales encontrados: ${totalChannelsToFind.toLocaleString()}`, 'success');
+        
         const scanDate = new Date().toLocaleString('es-ES');
         setServers(prevServers => prevServers.map(s => ({
           ...s,
-          activeChannels: s.activeChannels ? s.activeChannels + Math.floor(Math.random() * 100) : Math.floor(Math.random() * 40000),
+          activeChannels: totalChannelsToFind / prevServers.length, // Distribuir canales entre servidores para la demo
           lastScan: scanDate,
           status: 'Online'
         })));
-        setCacheSize(prev => prev + Math.random() * 10);
+        setCacheSize(prev => prev + (Math.random() * 5)); // Aumentar cache
       }
     }, intervalTime);
   };

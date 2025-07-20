@@ -15,7 +15,7 @@ export interface LogEntry {
   id: string;
   timestamp: Date;
   message: string;
-  level: 'info' | 'warning' | 'error';
+  level: 'info' | 'warning' | 'error' | 'success';
 }
 
 export interface Stats {
@@ -24,10 +24,3 @@ export interface Stats {
     lastScanTime: string;
     cacheSize: number;
 }
-
-export type AiOptimizationSuggestion = {
-  suggestedFrequency: string;
-  serverPrioritization: string[];
-  resourceAllocation: string;
-  additionalNotes: string;
-};

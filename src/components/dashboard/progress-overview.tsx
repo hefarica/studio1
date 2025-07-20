@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { getAiOptimization } from '@/app/actions';
 import { Button } from '../ui/button';
 import { Loader } from 'lucide-react';
-import type { AiOptimizationSuggestion } from '@/lib/types';
+import type { OptimizeScanConfigurationOutput } from '@/ai/flows/optimize-scan-configuration';
 
 type ProgressOverviewProps = {
   progress: number;
@@ -24,7 +24,7 @@ export function ProgressOverview({
 }: ProgressOverviewProps) {
   const [isClient, setIsClient] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
-  const [optimization, setOptimization] = useState<AiOptimizationSuggestion | null>(null);
+  const [optimization, setOptimization] = useState<OptimizeScanConfigurationOutput | null>(null);
 
   useEffect(() => {
     setIsClient(true);
