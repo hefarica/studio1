@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import pLimit from 'p-limit';
+import { CONFIG } from '@/lib/constants';
 
 async function makeRequest(fullUrl) {
     const res = await fetch(fullUrl, {
@@ -39,7 +41,6 @@ export async function POST(request) {
       if (results.serverInfo) {
         results.protocol = 'Xtream Codes';
       } else {
-        // If server info fails, we can stop here
         throw new Error('No se pudo obtener la información del servidor. Verifique las credenciales y la URL.');
       }
 
@@ -51,26 +52,26 @@ export async function POST(request) {
       } else {
         results.categories = categories;
       }
+      
+      const limit = pLimit(CONFIG.MAX_PARALLEL);
 
-      let totalChannels = 0;
-      const maxCategoriesToCheck = Math.min(results.categories.length, 10);
-      
-      for (let i = 0; i < maxCategoriesToCheck; i++) {
-        const category = results.categories[i];
-        if (!category || !category.category_id) continue;
-        
-        try {
-          const channelsUrl = `${server.url}/player_api.php?username=${server.username}&password=${server.password}&action=get_live_streams&category_id=${category.category_id}`;
-          const channels = await makeRequest(channelsUrl);
-          if (Array.isArray(channels)) {
-            totalChannels += channels.length;
-          }
-        } catch (error) {
-          console.warn(`Error obteniendo canales de categoría ${category.category_name}: ${error.message}`);
-        }
-      }
-      
-      results.totalChannels = totalChannels;
+      const channelCounts = await Promise.all(
+        results.categories.map(category =>
+          limit(async () => {
+            if (!category || !category.category_id) return 0;
+            try {
+              const channelsUrl = `${server.url}/player_api.php?username=${server.username}&password=${server.password}&action=get_live_streams&category_id=${category.category_id}`;
+              const channels = await makeRequest(channelsUrl);
+              return Array.isArray(channels) ? channels.length : 0;
+            } catch (error) {
+              console.warn(`Error obteniendo canales de categoría ${category.category_name}: ${error.message}`);
+              return 0;
+            }
+          })
+        )
+      );
+
+      results.totalChannels = channelCounts.reduce((acc, count) => acc + count, 0);
 
       return NextResponse.json({ success: true, results });
 

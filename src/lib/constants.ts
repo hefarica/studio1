@@ -1,7 +1,7 @@
 export const CONFIG = {
   // Procesamiento
-  CHUNK_SIZE: 2500,
-  SLEEP_TIME: 50,
+  CHUNK_SIZE: 1000,
+  SLEEP_TIME: 10,
   MAX_PARALLEL: 3,
   
   // Timeouts (convertidos desde el HTML)
