@@ -1,88 +1,146 @@
 import { NextResponse } from 'next/server';
 import pLimit from 'p-limit';
+import { z } from 'zod';
 import { CONFIG } from '@/lib/constants';
 
-export const runtime = 'nodejs'; // Force Node.js runtime
+export const runtime = 'nodejs'; // Force Node.js runtime for compatibility
 
-async function makeRequest(fullUrl) {
-    const res = await fetch(fullUrl, {
-        method: 'GET',
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept': 'application/json' },
+// Zod schemas for robust validation
+const CategorySchema = z.object({
+  category_id: z.string(),
+  category_name: z.string(),
+});
+const ChannelSchema = z.object({
+  stream_id: z.string(),
+  name: z.string(),
+  stream_icon: z.string().optional(),
+  category_id: z.string(),
+});
+const ServerInfoSchema = z.object({
+  server_info: z.any(),
+  user_info: z.any().optional(),
+});
+
+/**
+ * A resilient fetch function that attempts a direct connection first,
+ * then falls back to a list of CORS proxies with exponential backoff.
+ * @param {string} url - The URL to fetch.
+ * @param {number} timeout - Request timeout in milliseconds.
+ * @returns {Promise<any>} - The JSON response from the server.
+ */
+async function safeFetchJSON(url, timeout = CONFIG.REQUEST_TIMEOUT) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    // Attempt 1: Direct connection
+    const directRes = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0' },
     });
+    if (directRes.ok) {
+      clearTimeout(timeoutId);
+      return await directRes.json();
+    }
+    // Log non-200 direct responses but continue to proxies
+    console.warn(`[safeFetch] Direct request to ${url} failed with status: ${directRes.status}`);
+  } catch (err) {
+    // Log direct connection errors but continue to proxies
+    console.warn(`[safeFetch] Direct request to ${url} failed: ${err.message}`);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
-    if (res.status >= 500) {
-        console.warn(`[API/scan-server] Servidor en ${fullUrl} responde con ${res.status}`);
-        return null; // Return null to handle gracefully
+  // Fallback to CORS proxies if direct fails
+  for (let i = 0; i < CONFIG.CORS_PROXIES.length; i++) {
+    const proxyUrl = `${CONFIG.CORS_PROXIES[i]}${encodeURIComponent(url)}`;
+    const proxyController = new AbortController();
+    const proxyTimeoutId = setTimeout(() => proxyController.abort(), timeout);
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500 * i)); // Exponential backoff
+      const proxyRes = await fetch(proxyUrl, { signal: proxyController.signal });
+      if (proxyRes.ok) {
+        clearTimeout(proxyTimeoutId);
+        const text = await proxyRes.text();
+        // Some proxies wrap the response in a 'contents' object
+        try {
+          const json = JSON.parse(text);
+          return json.contents ? JSON.parse(json.contents) : json;
+        } catch {
+          throw new Error("Failed to parse JSON from proxy.");
+        }
+      }
+    } catch (err) {
+      console.warn(`[safeFetch] Proxy ${i + 1} failed: ${err.message}`);
+    } finally {
+        clearTimeout(proxyTimeoutId);
     }
-    if (!res.ok) {
-        throw new Error(`HTTP ${res.status} en ${fullUrl}`);
-    }
-    return res.json();
+  }
+
+  throw new Error(`All fetch attempts failed for URL: ${url}`);
 }
 
 export async function POST(request) {
   try {
     const { server } = await request.json();
-    
     if (!server || !server.url || !server.username || !server.password) {
       return NextResponse.json({ error: 'Datos del servidor incompletos' }, { status: 400 });
     }
 
+    // Step 1: Get Server Info to validate connection
+    const serverInfoUrl = `${server.url}/player_api.php?username=${server.username}&password=${server.password}&action=get_server_info`;
+    const serverInfoRaw = await safeFetchJSON(serverInfoUrl);
+    const serverInfoParsed = ServerInfoSchema.safeParse(serverInfoRaw);
+    if (!serverInfoParsed.success) {
+      throw new Error(`Respuesta de información del servidor inválida: ${serverInfoParsed.error.message}`);
+    }
+
+    // Step 2: Get Categories
+    const categoriesUrl = `${server.url}/player_api.php?username=${server.username}&password=${server.password}&action=get_live_categories`;
+    const categoriesRaw = await safeFetchJSON(categoriesUrl);
+    const categoriesParsed = z.array(CategorySchema).safeParse(categoriesRaw);
+    if (!categoriesParsed.success) {
+      throw new Error(`Respuesta de categorías inválida: ${categoriesParsed.error.message}`);
+    }
+    const categories = categoriesParsed.data;
+
+    // Step 3: Scan all categories in parallel with a concurrency limit
+    const limit = pLimit(CONFIG.MAX_PARALLEL);
+    const channelCounts = await Promise.all(
+      categories.map(category =>
+        limit(async () => {
+          try {
+            const channelsUrl = `${server.url}/player_api.php?username=${server.username}&password=${server.password}&action=get_live_streams&category_id=${category.category_id}`;
+            const channelsRaw = await safeFetchJSON(channelsUrl, 20000); // Longer timeout for channels
+            const channelsParsed = z.array(ChannelSchema).safeParse(channelsRaw);
+            if (channelsParsed.success) {
+              return channelsParsed.data.length;
+            }
+            console.warn(`[SCAN] Categoría ${category.category_name} con formato inválido: ${channelsParsed.error.message}`);
+            return 0; // Return 0 for invalid categories but don't fail the whole scan
+          } catch (error) {
+            console.warn(`[SCAN] Error obteniendo canales de categoría ${category.category_name}: ${error.message}`);
+            return 0; // Don't fail the whole scan for one bad category
+          }
+        })
+      )
+    );
+
+    const totalChannels = channelCounts.reduce((acc, count) => acc + count, 0);
+
     const results = {
-      serverInfo: null,
-      categories: [],
-      totalChannels: 0,
-      protocol: 'Unknown',
+      serverInfo: serverInfoParsed.data.server_info,
+      categories,
+      totalChannels,
+      protocol: 'Xtream Codes', // Detected from successful server_info call
       error: null
     };
 
-    try {
-      const serverInfoUrl = `${server.url}/player_api.php?username=${server.username}&password=${server.password}&action=get_server_info`;
-      results.serverInfo = await makeRequest(serverInfoUrl);
-
-      if (results.serverInfo) {
-        results.protocol = 'Xtream Codes';
-      } else {
-        throw new Error('No se pudo obtener la información del servidor. Verifique las credenciales y la URL.');
-      }
-
-      const categoriesUrl = `${server.url}/player_api.php?username=${server.username}&password=${server.password}&action=get_live_categories`;
-      const categories = await makeRequest(categoriesUrl);
-      
-      if (!Array.isArray(categories)) {
-        results.categories = [];
-      } else {
-        results.categories = categories;
-      }
-      
-      const limit = pLimit(CONFIG.MAX_PARALLEL);
-
-      const channelCounts = await Promise.all(
-        results.categories.map(category =>
-          limit(async () => {
-            if (!category || !category.category_id) return 0;
-            try {
-              const channelsUrl = `${server.url}/player_api.php?username=${server.username}&password=${server.password}&action=get_live_streams&category_id=${category.category_id}`;
-              const channels = await makeRequest(channelsUrl);
-              return Array.isArray(channels) ? channels.length : 0;
-            } catch (error) {
-              console.warn(`Error obteniendo canales de categoría ${category.category_name}: ${error.message}`);
-              return 0;
-            }
-          })
-        )
-      );
-
-      results.totalChannels = channelCounts.reduce((acc, count) => acc + count, 0);
-
-      return NextResponse.json({ success: true, results });
-
-    } catch (error) {
-      results.error = error.message;
-      return NextResponse.json({ success: false, results, error: error.message });
-    }
+    return NextResponse.json({ success: true, results });
 
   } catch (error) {
-    return NextResponse.json({ error: 'Error interno del servidor', details: error.message }, { status: 500 });
+    console.error(`[API/scan-server] Fatal error: ${error.message}`);
+    return NextResponse.json({ success: false, results: null, error: error.message }, { status: 502 });
   }
 }

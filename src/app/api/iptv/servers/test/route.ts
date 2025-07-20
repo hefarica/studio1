@@ -1,15 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { IPTVCore } from '@/lib/iptv-core';
 import { IPTVErrorHandler } from '@/lib/error-handler';
 import { IPTVServer } from '@/lib/types';
 
+// Zod schema for validating the server info response
+const ServerInfoResponseSchema = z.object({
+  server_info: z.object({
+    url: z.string().optional(),
+    port: z.string().optional(),
+    https_port: z.string().optional(),
+    time_now: z.string().optional(),
+    timezone: z.string().optional(),
+  }).optional(),
+  user_info: z.object({
+    username: z.string().optional(),
+    password: z.string().optional(),
+    status: z.string().optional(),
+    exp_date: z.string().nullable().optional(),
+  }).optional(),
+});
+
+
 export async function POST(request: NextRequest) {
   try {
-    const serverData = await request.json();
+    const serverData: IPTVServer = await request.json();
     
-    // Validaciones
     const requiredFields = ['name', 'url', 'username', 'password'];
-    const missingFields = requiredFields.filter(field => !serverData[field]?.trim());
+    const missingFields = requiredFields.filter(field => !(serverData as any)[field]?.trim());
     
     if (missingFields.length > 0) {
       return NextResponse.json({
@@ -20,7 +38,6 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Validar formato de URL
     try {
       new URL(serverData.url);
     } catch {
@@ -37,56 +54,46 @@ export async function POST(request: NextRequest) {
     const iptvCore = new IPTVCore();
     
     try {
-      // Usar el sistema de retry con manejo de errores
-      const result = await IPTVErrorHandler.handleRetry(
-        async () => {
-          return await iptvCore.testServerConnection({
-            ...serverData,
-            id: 'test_server',
-            channels: 0,
-            lastScan: null,
-            status: 'idle',
-            protocol: null,
-            categories: [],
-            totalChannels: 0,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          } as IPTVServer);
-        },
-        { 
-          serverName: serverData.name, 
-          operationType: 'connection_test' 
-        },
-        5 // máximo 5 intentos
-      );
+      const testUrl = `${serverData.url}/player_api.php?username=${serverData.username}&password=${serverData.password}&action=get_server_info`;
+      
+      const response = await fetch(testUrl, {
+          method: 'GET',
+          headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+      });
 
-      if (result.success) {
-        const protocol = result.data ? iptvCore.detectProtocol(result.data) : null;
-        const duration = Date.now() - startTime;
-
-        console.log(`✅ [TEST] ${serverData.name} exitoso en ${Math.round(duration/1000)}s`);
-
-        return NextResponse.json({
-          success: true,
-          data: {
-            protocol,
-            serverInfo: result.data?.server_info || null,
-            userInfo: result.data?.user_info || null,
-            connectionTime: result.duration,
-            totalDuration: Math.round(duration / 1000),
-            timestamp: new Date().toISOString()
-          }
-        });
-      } else {
-        throw new Error(result.error || 'Test de conexión falló');
+      if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+      
+      const data = await response.json();
+      const validation = ServerInfoResponseSchema.safeParse(data);
+
+      if (!validation.success) {
+          throw new Error(`Respuesta inválida del servidor: ${validation.error.message}`);
+      }
+
+      const protocol = iptvCore.detectProtocol(validation.data);
+      const duration = Date.now() - startTime;
+      
+      console.log(`✅ [TEST] ${serverData.name} exitoso en ${Math.round(duration/1000)}s`);
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          protocol,
+          serverInfo: validation.data?.server_info || null,
+          userInfo: validation.data?.user_info || null,
+          connectionTime: duration,
+          totalDuration: Math.round(duration / 1000),
+          timestamp: new Date().toISOString()
+        }
+      });
 
     } catch (connectionError: any) {
       const analyzedError = IPTVErrorHandler.analyzeError(connectionError, {
         serverName: serverData.name,
         url: serverData.url
       });
-
       const duration = Date.now() - startTime;
 
       console.log(`❌ [TEST] ${serverData.name} falló: ${analyzedError.message}`);

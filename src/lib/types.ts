@@ -55,9 +55,7 @@ export type LogLevel = 'info' | 'success' | 'warning' | 'error' | 'debug';
 
 export interface ConnectionStatus {
   isConnecting: boolean;
-  attempts: number;
-  lastError?: string;
-  nextRetryIn?: number;
+  isScanning: boolean;
 }
 
 

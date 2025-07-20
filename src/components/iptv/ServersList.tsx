@@ -7,9 +7,7 @@ import { Loading } from '@/components/ui/Loading';
 import { useServersStore } from '@/store/servers';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLogsStore } from '@/store/logs';
-import { IPTVCore } from '@/lib/iptv-core.ts';
-import { IPTVErrorHandler } from '@/lib/error-handler';
-import { SERVER_STATUS_COLORS } from '@/lib/constants';
+import { IPTVCore } from '@/lib/iptv-core';
 import type { IPTVServer, ConnectionStatus } from '@/lib/types';
 import { clsx } from 'clsx';
 
@@ -24,7 +22,7 @@ export const ServersList: React.FC = () => {
   const updateConnectionState = useCallback((serverId: string, updates: Partial<ConnectionStatus>) => {
     setConnectionStates(prev => ({
       ...prev,
-      [serverId]: { ...(prev[serverId] || {}), ...updates } as ConnectionStatus
+      [serverId]: { ...(prev[serverId] || { isConnecting: false, isScanning: false }), ...updates } as ConnectionStatus
     }));
   }, []);
 
@@ -34,40 +32,24 @@ export const ServersList: React.FC = () => {
       return;
     }
     
-    if (!iptvCore) {
-        error('Sistema no listo', 'IPTVCore aún no está disponible.');
-        return;
-    }
-  
-    updateConnectionState(server.id, {
-      isConnecting: true,
-      attempts: 1,
-      lastError: undefined,
-    });
-  
+    updateConnectionState(server.id, { isConnecting: true });
     updateServer(server.id, { status: 'scanning' });
     addLog(`🔍 Probando conexión: ${server.name}`, 'info', { serverId: server.id });
   
     try {
-      const result = await iptvCore.testServerConnection(server, 5);
+      const result = await iptvCore.testServerConnection(server);
   
       if (result.success) {
-        updateConnectionState(server.id, {
-          isConnecting: false,
-          attempts: 0,
-          lastError: undefined
-        });
-
         updateServer(server.id, { 
           status: 'connected',
-          protocol: result.data ? iptvCore.detectProtocol(result.data) : null,
+          protocol: result.data.protocol,
           lastScan: new Date().toLocaleString(),
           updatedAt: new Date()
         });
 
         success(
           'Conexión exitosa',
-          `${server.name} conectado en ${result.duration}s después de ${result.attempts} intento(s)`,
+          `${server.name} conectado. Protocolo: ${result.data.protocol}`,
           {
             action: {
               label: 'Escanear canales',
@@ -76,73 +58,28 @@ export const ServersList: React.FC = () => {
           }
         );
 
-        addLog(`✅ ${server.name}: Conexión exitosa en ${result.duration}s (${result.attempts} intentos)`, 'success', { serverId: server.id });
+        addLog(`✅ ${server.name}: Conexión exitosa. Protocolo: ${result.data.protocol}`, 'success', { serverId: server.id });
       } else {
-        updateConnectionState(server.id, {
-            isConnecting: false,
-            attempts: result.attempts,
-            lastError: result.error
-        });
         updateServer(server.id, { status: 'error' });
-        const errorDetails = [
-            `Error: ${result.error}`,
-            `Intentos realizados: ${result.attempts}`,
-            `Tiempo total: ${result.duration}s`
-        ];
-        if (result.diagnosis) {
-            errorDetails.push(`Diagnóstico: ${result.diagnosis.suggestions.join(', ')}`);
-        }
-        error(
-            `Error de conexión - ${server.name}`,
-            result.error || 'Error desconocido de conexión',
-            {
-              action: {
-                label: 'Ver detalles',
-                onClick: () => {
-                  alert(`DIAGNÓSTICO DETALLADO:\n\n${errorDetails.join('\n')}\n\nSUGERENCIAS:\n- Verificar URL y credenciales\n- Confirmar que el servidor esté online\n- Contactar al proveedor IPTV`);
-                }
-              }
-            }
-        );
-        addLog(`❌ ${server.name}: ${result.error} (${result.attempts} intentos, ${result.duration}s)`, 'error', { serverId: server.id });
-        if (result.diagnosis?.suggestions?.length > 0) {
-            addLog(`🩺 ${server.name}: ${result.diagnosis.suggestions.join(', ')}`, 'debug', { serverId: server.id });
-        }
+        error(`Error de conexión - ${server.name}`, result.error || 'Error desconocido');
+        addLog(`❌ ${server.name}: ${result.error}`, 'error', { serverId: server.id });
       }
     } catch (err: any) {
-        updateConnectionState(server.id, {
-            isConnecting: false,
-            attempts: 0,
-            lastError: 'Error crítico durante la prueba'
-        });
         updateServer(server.id, { status: 'error' });
-        error(
-            'Error crítico',
-            `${server.name}: ${err.message}`,
-            {
-              action: {
-                label: 'Reintentar',
-                onClick: () => testServerConnection(server)
-              }
-            }
-        );
+        error('Error crítico', `${server.name}: ${err.message}`);
         addLog(`💥 ${server.name}: Error crítico - ${err.message}`, 'error', { serverId: server.id });
+    } finally {
+        updateConnectionState(server.id, { isConnecting: false });
     }
   }, [iptvCore, connectionStates, updateServer, addLog, success, error, warning, updateConnectionState]);
 
   const startServerScan = useCallback(async (server: IPTVServer) => {
-    if (!iptvCore) {
-      error('Error del sistema', 'IPTVCore no está disponible');
-      addLog('❌ IPTVCore no está instanciado', 'error');
-      return;
+    if (connectionStates[server.id]?.isScanning) {
+        warning('Escaneo en progreso', `Ya se está escaneando ${server.name}`);
+        return;
     }
 
-    if (typeof iptvCore.scanServer !== 'function') {
-      error('Error del sistema', 'Método scanServer no disponible');
-      addLog('❌ Método scanServer no es una función', 'error');
-      return;
-    }
-
+    updateConnectionState(server.id, { isScanning: true });
     updateServer(server.id, { status: 'scanning' });
     addLog(`🚀 Iniciando escaneo completo de ${server.name}`, 'info', { serverId: server.id });
     
@@ -151,22 +88,24 @@ export const ServersList: React.FC = () => {
       if (result.success) {
         updateServer(server.id, {
           status: 'completed',
-          totalChannels: result.channels,
-          channels: result.channels,
+          totalChannels: result.results.totalChannels,
+          channels: result.results.totalChannels, // legacy support
           lastScan: new Date().toLocaleString(),
           updatedAt: new Date()
         });
-        success('Escaneo completado', `${server.name}: ${result.channels} canales en ${result.duration}s`);
-        addLog(`🎉 ${server.name}: Escaneo completado - ${result.channels} canales`, 'success', { serverId: server.id });
+        success('Escaneo completado', `${server.name}: ${result.results.totalChannels} canales encontrados.`);
+        addLog(`🎉 ${server.name}: Escaneo completado - ${result.results.totalChannels} canales`, 'success', { serverId: server.id });
       } else {
-        throw new Error(result.errors.join(', '));
+        throw new Error(result.error || 'El escaneo del servidor falló');
       }
     } catch (err: any) {
       updateServer(server.id, { status: 'error' });
       error('Error de escaneo', `${server.name}: ${err.message}`);
       addLog(`💥 ${server.name}: Error en escaneo - ${err.message}`, 'error', { serverId: server.id });
+    } finally {
+        updateConnectionState(server.id, { isScanning: false });
     }
-  }, [addLog, error, iptvCore, success, updateServer]);
+  }, [iptvCore, connectionStates, addLog, error, success, updateServer, updateConnectionState]);
 
   const handleRemoveServer = (server: IPTVServer) => {
     if (confirm(`¿Estás seguro de eliminar "${server.name}"?`)) {
@@ -179,20 +118,14 @@ export const ServersList: React.FC = () => {
   const getStatusDisplay = (server: IPTVServer) => {
     const connectionState = connectionStates[server.id];
     
-    if (connectionState?.isConnecting) {
-      return {
-        icon: '🔄',
-        text: `Conectando... (Intento ${connectionState.attempts})`,
-        color: 'text-amber-400',
-        bgColor: 'bg-amber-900/20 border-amber-500/30'
-      };
-    }
+    if (connectionState?.isConnecting) return { icon: '🔄', text: `Conectando...`, color: 'text-amber-400', bgColor: 'bg-amber-900/20 border-amber-500/30' };
+    if (connectionState?.isScanning) return { icon: '📡', text: `Escaneando...`, color: 'text-blue-400', bgColor: 'bg-blue-900/20 border-blue-500/30' };
 
     switch (server.status) {
       case 'connected': return { icon: '✅', text: `Conectado`, color: 'text-emerald-400', bgColor: 'bg-emerald-900/20 border-emerald-500/30' };
       case 'scanning': return { icon: '🔍', text: 'Escaneando...', color: 'text-blue-400', bgColor: 'bg-blue-900/20 border-blue-500/30' };
-      case 'completed': return { icon: '🎯', text: `Completado - ${server.totalChannels} canales`, color: 'text-purple-400', bgColor: 'bg-purple-900/20 border-purple-500/30' };
-      case 'error': return { icon: '❌', text: connectionState?.lastError || 'Error', color: 'text-error-400', bgColor: 'bg-error-900/20 border-error-500/30' };
+      case 'completed': return { icon: '🎯', text: `Completado - ${server.totalChannels.toLocaleString()} canales`, color: 'text-purple-400', bgColor: 'bg-purple-900/20 border-purple-500/30' };
+      case 'error': return { icon: '❌', text: 'Error', color: 'text-error-400', bgColor: 'bg-error-900/20 border-error-500/30' };
       default: return { icon: '⚪', text: 'Sin probar', color: 'text-slate-400', bgColor: 'bg-slate-800/50 border-slate-600/30' };
     }
   };
@@ -224,11 +157,12 @@ export const ServersList: React.FC = () => {
         {servers.map((server) => {
           const status = getStatusDisplay(server);
           const connectionState = connectionStates[server.id];
+          const isBusy = connectionState?.isConnecting || connectionState?.isScanning;
           
           return (
             <div
               key={server.id}
-              className={clsx('rounded-lg border p-5 transition-all duration-300', 'hover:shadow-lg hover:translate-x-1', status.bgColor, server.status === 'scanning' && 'animate-pulse-slow')}
+              className={clsx('rounded-lg border p-5 transition-all duration-300', 'hover:shadow-lg hover:translate-x-1', status.bgColor, isBusy && 'animate-pulse-slow')}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
@@ -240,10 +174,10 @@ export const ServersList: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {connectionState?.isConnecting && <Loading size="sm" variant="spinner" />}
-                  <Button size="sm" variant="info" onClick={() => testServerConnection(server)} disabled={connectionState?.isConnecting || server.status === 'scanning'} icon="🔍">Probar</Button>
-                  <Button size="sm" variant="secondary" onClick={() => startServerScan(server)} disabled={connectionState?.isConnecting || server.status === 'scanning'} icon="📡">Escanear</Button>
-                  <Button size="sm" variant="danger" onClick={() => handleRemoveServer(server)} disabled={connectionState?.isConnecting || server.status === 'scanning'} icon="🗑️">Eliminar</Button>
+                  {isBusy && <Loading size="sm" variant="spinner" />}
+                  <Button size="sm" variant="info" onClick={() => testServerConnection(server)} disabled={isBusy} icon="🔗">Probar</Button>
+                  <Button size="sm" variant="secondary" onClick={() => startServerScan(server)} disabled={isBusy} icon="📡">Escanear</Button>
+                  <Button size="sm" variant="danger" onClick={() => handleRemoveServer(server)} disabled={isBusy} icon="🗑️">Eliminar</Button>
                 </div>
               </div>
 
@@ -255,18 +189,6 @@ export const ServersList: React.FC = () => {
                   <span className="text-slate-500">⏰ Último escaneo: <span className="text-slate-300">{server.lastScan || 'Nunca'}</span></span>
                 </div>
               </div>
-
-              {connectionState?.lastError && server.status === 'error' && (
-                <div className="mt-4 p-3 bg-error-900/30 border border-error-500/30 rounded-lg">
-                  <div className="flex items-start gap-2">
-                    <span className="text-error-400 text-lg flex-shrink-0">🔧</span>
-                    <div>
-                      <h4 className="text-sm font-semibold text-error-300 mb-1">Diagnóstico del Error:</h4>
-                      <p className="text-xs text-error-200 mb-2">{connectionState.lastError}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           );
         })}

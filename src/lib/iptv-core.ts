@@ -1,67 +1,93 @@
-// This file is now primarily for type definitions and can be moved/renamed.
-// The core logic is now inside the API routes and the main component.
+import type { IPTVServer } from './types';
 
-import { CONFIG } from './constants';
-
-export class IPTVCore extends EventTarget {
-  constructor() {
-    super();
-    this.scanning = false;
-  }
-
-  addLog(message, level = 'info') {
-    this.dispatchEvent(new CustomEvent('log', { detail: { message, level } }));
-  }
-
-  async testServerConnection(server) {
+/**
+ * Provides a client-side SDK to interact with the IPTV backend API routes.
+ * This class simplifies making requests from the UI components.
+ */
+export class IPTVCore {
+  
+  /**
+   * Tests the connection to a given IPTV server by calling the backend API.
+   * @param server The server configuration to test.
+   * @returns A promise that resolves with the test result.
+   */
+  async testServerConnection(server: IPTVServer) {
+    this.log(`[CORE] Testing connection for: ${server.name}`);
     try {
-      this.addLog(`Probando conexión: ${server.name}`, 'info');
-      
-      const response = await fetch('/api/iptv/test-connection', {
+      const response = await fetch('/api/iptv/servers/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: server.url, username: server.username, password: server.password })
+        body: JSON.stringify(server),
       });
 
-      const result = await response.json();
-
-      if (result.success) {
-        this.addLog(`✅ ${server.name}: Conexión exitosa`, 'success');
-        return { success: true, protocol: this.detectProtocol(result.data) };
-      } else {
-        this.addLog(`❌ ${server.name}: ${result.error}`, 'error');
-        return { success: false, error: result.error };
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
-    } catch (error) {
-      this.addLog(`💥 Error de red probando ${server.name}: ${error.message}`, 'error');
+
+      const result = await response.json();
+      this.log(`[CORE] Test successful for ${server.name}: ${result.data.protocol}`, 'success');
+      return result;
+      
+    } catch (error: any) {
+      this.log(`[CORE] Network error testing ${server.name}: ${error.message}`, 'error');
       return { success: false, error: error.message };
     }
   }
 
-  async scanServer(server) {
+  /**
+   * Initiates a full scan of a server by calling the backend API.
+   * @param server The server to scan.
+   * @returns A promise that resolves with the scan result.
+   */
+  async scanServer(server: IPTVServer) {
+     this.log(`[CORE] Initiating full scan for: ${server.name}`);
     try {
       const response = await fetch('/api/iptv/scan-server', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ server })
+        body: JSON.stringify({ server }),
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to parse scan error response' }));
+        throw new Error(errorData.error || `Scan API error! status: ${response.status}`);
+      }
 
       const result = await response.json();
-      
       if (result.success) {
-        this.addLog(`[SCAN] ${server.name} completado: ${result.results.totalChannels} canales`, 'success');
+        this.log(`[CORE] Scan successful for ${server.name}: ${result.results.totalChannels} channels`, 'success');
       } else {
-        this.addLog(`[SCAN] Error escaneando ${server.name}: ${result.error}`, 'error');
+        this.log(`[CORE] Scan failed for ${server.name}: ${result.error}`, 'error');
       }
       return result;
 
-    } catch (error) {
-      this.addLog(`💥 Error de red escaneando ${server.name}: ${error.message}`, 'error');
-      return { success: false, error: error.message };
+    } catch (error: any) {
+      this.log(`[CORE] Network error scanning ${server.name}: ${error.message}`, 'error');
+      return { success: false, error: error.message, results: null };
     }
   }
 
-  detectProtocol(data) {
+  /**
+   * A simple internal logger that outputs to the console.
+   * @param message The message to log.
+   * @param level The log level.
+   */
+  private log(message: string, level: 'info' | 'error' | 'success' = 'info') {
+    const prefix = {
+      info: 'ℹ️',
+      error: '❌',
+      success: '✅',
+    }[level];
+    console.log(`${prefix} ${message}`);
+  }
+
+  /**
+   * Detects the IPTV protocol based on the server's response data.
+   * @param data The response from the server.
+   * @returns The detected protocol name.
+   */
+  detectProtocol(data: any): string {
     if (data?.server_info && data?.user_info) return 'Xtream Codes';
     if (typeof data === 'string' && data.includes('#EXTINF')) return 'M3U Plus';
     if (Array.isArray(data)) return 'Panel API';
