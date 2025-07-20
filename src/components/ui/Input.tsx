@@ -9,8 +9,10 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, icon, helperText, className, ...props }, ref) => {
-    const inputId = props.id || `input-${Math.random().toString(36).substr(2, 9)}`;
+  ({ label, error, icon, helperText, className, id, ...props }, ref) => {
+    const reactId = React.useId();
+    const inputId = id || reactId;
+    
     return (
       <div className="w-full">
         {label && <label htmlFor={inputId} className="block text-sm font-medium text-slate-300 mb-2">{label}</label>}
