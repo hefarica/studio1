@@ -11,7 +11,7 @@ type ControlPanelProps = {
 export function ControlPanel({ onScanAll, onClearAll }: ControlPanelProps) {
   return (
     <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
-      <Button onClick={onScanAll} size="lg" className="h-14 text-lg">
+      <Button onClick={onScanAll} size="lg" className="h-14 text-lg bg-primary hover:bg-primary/90">
         <ScanLine className="mr-2 h-5 w-5" />
         Escanear Todos los Servidores
       </Button>

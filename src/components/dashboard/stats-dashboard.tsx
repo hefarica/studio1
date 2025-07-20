@@ -44,9 +44,6 @@ export function StatsDashboard({ serverCount, channelCount, lastScanTime, cacheS
       {stats.map((stat, index) => (
         <Card key={index} className="bg-card shadow-lg rounded-lg text-center p-4">
           <CardContent className="p-0 flex flex-col items-center justify-center gap-2">
-            <div className="p-3 bg-background/50 rounded-full">
-                <stat.icon className="h-6 w-6 text-accent" data-ai-hint={stat['data-ai-hint']} />
-            </div>
             <p className="text-2xl font-bold">{stat.value}</p>
             <p className="text-xs text-muted-foreground uppercase">{stat.label}</p>
           </CardContent>

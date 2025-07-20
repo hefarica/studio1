@@ -45,7 +45,7 @@ export function ServerConfig({ onAddServer }: ServerConfigProps) {
   return (
     <Card className="bg-card shadow-lg rounded-lg">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
+        <CardTitle className="flex items-center gap-2 text-lg font-semibold">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-file-cog"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M15 2v5h5"/><path d="M12 12a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z"/><path d="M12 18a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z"/><path d="M7 15a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z"/></svg>
           Configuración de Servidor
         </CardTitle>
@@ -59,9 +59,8 @@ export function ServerConfig({ onAddServer }: ServerConfigProps) {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs text-muted-foreground">Nombre del Servidor</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Input placeholder="Nombre del Servidor" {...field} />
                     </FormControl>
                   </FormItem>
                 )}
@@ -71,9 +70,8 @@ export function ServerConfig({ onAddServer }: ServerConfigProps) {
                 name="url"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs text-muted-foreground">URL del Servidor</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Input placeholder="URL del Servidor" {...field} />
                     </FormControl>
                   </FormItem>
                 )}
@@ -83,9 +81,8 @@ export function ServerConfig({ onAddServer }: ServerConfigProps) {
                 name="user"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs text-muted-foreground">Usuario</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Input placeholder="Usuario" {...field} />
                     </FormControl>
                   </FormItem>
                 )}
@@ -95,16 +92,15 @@ export function ServerConfig({ onAddServer }: ServerConfigProps) {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs text-muted-foreground">Contraseña</FormLabel>
                     <FormControl>
-                      <Input type="password" {...field} />
+                      <Input type="password" placeholder="Contraseña" {...field} />
                     </FormControl>
                   </FormItem>
                 )}
               />
             </div>
             <div className="flex gap-4 pt-2">
-                <Button type="submit" variant="default" className="bg-accent hover:bg-accent/90">
+                <Button type="submit" variant="default" className="bg-primary hover:bg-primary/90">
                     <Plus className="mr-2 h-4 w-4"/>
                     Agregar Servidor
                 </Button>

@@ -15,11 +15,10 @@ export function ActivityLogs({ logs, onClearLog }: { logs: LogEntry[], onClearLo
   return (
     <Card className="bg-card shadow-lg rounded-lg">
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <FileText className="h-5 w-5" />
+        <CardTitle className="flex items-center gap-2 text-lg font-semibold">
           Log de Actividades
         </CardTitle>
-        <Button variant="secondary" size="sm" onClick={onClearLog}>
+        <Button variant="destructive" size="sm" onClick={onClearLog}>
           <Trash2 className="mr-2 h-4 w-4" />
           Limpiar Log
         </Button>
