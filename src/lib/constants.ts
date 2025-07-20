@@ -28,18 +28,6 @@ export const CONFIG = {
   UPDATE_INTERVAL: 100,
   NOTIFICATION_DURATION: 5000,
   
-  // Proxies CORS (del HTML original)
-  CORS_PROXIES: [
-    'https://api.codetabs.com/v1/proxy?quest=',
-    'https://api.allorigins.win/get?url=',
-    'https://cors-anywhere.herokuapp.com/',
-    'https://thingproxy.freeboard.io/fetch/',
-    'https://cors-proxy.htmldriven.com/?url=',
-    'https://crossorigin.me/',
-    'https://cors.io/?',
-    'https://jsonp.afeld.me/?url='
-  ],
-  
   // Configuraciones UI
   UI: {
     HEADER_HEIGHT: '80px',

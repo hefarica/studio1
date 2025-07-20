@@ -22,67 +22,48 @@ const ServerInfoSchema = z.object({
 });
 
 /**
- * A resilient fetch function that attempts a direct connection first,
- * then falls back to a list of CORS proxies with exponential backoff.
+ * Fetches JSON data through the app's internal proxy.
  * @param {string} url - The URL to fetch.
  * @param {number} timeout - Request timeout in milliseconds.
  * @returns {Promise<any>} - The JSON response from the server.
  */
 async function safeFetchJSON(url, timeout = CONFIG.REQUEST_TIMEOUT) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  try {
-    // Attempt 1: Direct connection
-    const directRes = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-    });
-    if (directRes.ok) {
-      clearTimeout(timeoutId);
-      return await directRes.json();
-    }
-    // Log non-200 direct responses but continue to proxies
-    console.warn(`[safeFetch] Direct request to ${url} failed with status: ${directRes.status}`);
-  } catch (err) {
-    if (err instanceof Error) {
-        // Log direct connection errors but continue to proxies
-        console.warn(`[safeFetch] Direct request to ${url} failed: ${err.message}`);
-    }
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  // Fallback to CORS proxies if direct fails
-  for (let i = 0; i < CONFIG.CORS_PROXIES.length; i++) {
-    const proxyUrl = `${CONFIG.CORS_PROXIES[i]}${encodeURIComponent(url)}`;
-    const proxyController = new AbortController();
-    const proxyTimeoutId = setTimeout(() => proxyController.abort(), timeout);
+    const proxyUrl = process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/api/iptv/proxy` : '/api/iptv/proxy';
     
-    try {
-      await new Promise(resolve => setTimeout(resolve, 500 * i)); // Exponential backoff
-      const proxyRes = await fetch(proxyUrl, { signal: proxyController.signal });
-      if (proxyRes.ok) {
-        clearTimeout(proxyTimeoutId);
-        const text = await proxyRes.text();
-        // Some proxies wrap the response in a 'contents' object
-        try {
-          const json = JSON.parse(text);
-          return json.contents ? JSON.parse(json.contents) : json;
-        } catch {
-          throw new Error("Failed to parse JSON from proxy.");
-        }
-      }
-    } catch (err) {
-        if (err instanceof Error) {
-            console.warn(`[safeFetch] Proxy ${i + 1} failed: ${err.message}`);
-        }
-    } finally {
-        clearTimeout(proxyTimeoutId);
-    }
-  }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-  throw new Error(`All fetch attempts failed for URL: ${url}`);
+    try {
+        const response = await fetch(proxyUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url }),
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Proxy error: ${response.status}`);
+        }
+        
+        const result = await response.json();
+
+        if (!result.success) {
+             throw new Error(result.error || 'Proxy request failed');
+        }
+
+        return result.data;
+    } catch (err) {
+        clearTimeout(timeoutId);
+        if (err instanceof Error) {
+            throw new Error(`[safeFetch] Failed for ${url}: ${err.message}`);
+        }
+        throw new Error(`[safeFetch] An unknown error occurred for ${url}`);
+    }
 }
 
 export async function POST(request) {
