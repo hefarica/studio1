@@ -47,7 +47,20 @@ const pollForProgress = (scanId: string) => {
       if (!response.ok) {
         const data = await response.json();
         if (data.code === 'NOT_FOUND') {
-            addLog(`Scan ${scanId} completed.`, 'success');
+            addLog(`Scan ${scanId} completed. Fetching final results...`, 'success');
+            // Final poll to get last data
+            const finalResponse = await fetch(`/api/iptv/scan-status?scanId=${scanId}`);
+            if (finalResponse.ok) {
+              const { data: finalData } = await finalResponse.json();
+              updateProgress(finalData.progress);
+              finalData.results.forEach((result: ScanResult) => {
+                updateServer(result.serverId, { 
+                  status: result.success ? 'completed' : 'error',
+                  totalChannels: result.channels,
+                  lastScan: new Date().toLocaleString()
+                });
+              });
+            }
             clearInterval(intervalId);
             useScanningStore.getState().reset();
         }
