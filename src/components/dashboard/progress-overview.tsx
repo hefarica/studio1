@@ -49,11 +49,11 @@ export function ProgressOverview({
   };
 
   return (
-    <Card className="shadow-lg rounded-lg bg-card">
+    <Card className="bg-card-bg shadow-lg rounded-lg text-gray-200">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <BrainCircuit className="h-5 w-5" />
-          AI Optimizer
+          AI Optimizer & Progress
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -61,51 +61,46 @@ export function ProgressOverview({
           <div>
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium">Scan Progress</span>
-              <span className="text-sm font-bold text-accent">{progress}%</span>
+              <span className="text-sm font-bold text-success-color">{Math.round(progress)}%</span>
             </div>
-            <Progress value={progress} className="w-full" />
-            <div className="text-xs text-muted-foreground mt-1 text-right">
+            <Progress value={progress} className="w-full h-2 bg-gray-600" />
+            <div className="text-xs text-gray-400 mt-1 text-right">
               ETA: {eta}
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="grid grid-cols-2 gap-4 text-center">
             <div>
-              <Tv className="h-6 w-6 mx-auto text-accent" />
-              <p className="mt-2 text-sm text-muted-foreground">Active Channels</p>
+              <Tv className="h-6 w-6 mx-auto text-success-color" />
+              <p className="mt-2 text-xs text-gray-400">CANALES ACTIVOS</p>
               <p className="font-bold text-lg">
                 {isClient ? totalChannels.toLocaleString() : '...'}
               </p>
             </div>
             <div>
-              <MemoryStick className="h-6 w-6 mx-auto text-accent" />
-              <p className="mt-2 text-sm text-muted-foreground">Memory</p>
+              <MemoryStick className="h-6 w-6 mx-auto text-success-color" />
+              <p className="mt-2 text-xs text-gray-400">MEMORIA</p>
               <p className="font-bold text-lg">{memoryUsage} MB</p>
-            </div>
-            <div>
-              <Clock className="h-6 w-6 mx-auto text-accent" />
-              <p className="mt-2 text-sm text-muted-foreground">ETA</p>
-              <p className="font-bold text-lg">{eta}</p>
             </div>
           </div>
           
-          <Button onClick={handleOptimize} disabled={optimizing} className="w-full bg-primary hover:bg-primary/90">
+          <Button onClick={handleOptimize} disabled={optimizing} className="w-full bg-primary-color hover:bg-primary-color/90 text-white">
             {optimizing ? (
               <>
                 <Loader className="mr-2 h-4 w-4 animate-spin" />
-                Optimizing...
+                Optimizando...
               </>
             ) : (
-              'Optimize Scan with AI'
+              'Optimizar con IA'
             )}
           </Button>
 
           {optimization && (
-            <div className="text-xs space-y-2 mt-4 bg-background/50 p-3 rounded-md">
-              <p><strong className='text-accent'>Frequency:</strong> {optimization.suggestedFrequency}</p>
-              <p><strong className='text-accent'>Prioritization:</strong> {optimization.serverPrioritization.join(', ')}</p>
-              <p><strong className='text-accent'>Resources:</strong> {optimization.resourceAllocation}</p>
-              <p><strong className='text-accent'>Notes:</strong> {optimization.additionalNotes}</p>
+            <div className="text-xs space-y-2 mt-4 bg-dark-bg/50 p-3 rounded-md border border-gray-700">
+              <p><strong className='text-success-color'>Frecuencia Sugerida:</strong> {optimization.suggestedFrequency}</p>
+              <p><strong className='text-success-color'>Priorización de Servidores:</strong> {optimization.serverPrioritization.join(', ')}</p>
+              <p><strong className='text-success-color'>Asignación de Recursos:</strong> {optimization.resourceAllocation}</p>
+              <p><strong className='text-success-color'>Notas Adicionales:</strong> {optimization.additionalNotes}</p>
             </div>
           )}
         </div>

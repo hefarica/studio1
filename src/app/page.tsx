@@ -30,11 +30,70 @@ export default function DashboardPage() {
   const [servers, setServers] = useState<Server[]>(initialServers);
   const [logs, setLogs] = useState<LogEntry[]>(initialLogs);
   const [cacheSize, setCacheSize] = useState(0.0);
-  const [isClient, setIsClient] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [eta, setEta] = useState('00:00:00');
+  const [totalChannelsFound, setTotalChannelsFound] = useState(5915);
+  const [memoryUsage, setMemoryUsage] = useState(256);
 
-  useEffect(() => {
-    setIsClient(true);
-  }, [])
+
+  const addLog = useCallback((message: string, level: 'info' | 'warning' | 'error') => {
+    const timestamp = new Date();
+    const timeString = `[${timestamp.getHours().toString().padStart(2,'0')}:${timestamp.getMinutes().toString().padStart(2,'0')}:${timestamp.getSeconds().toString().padStart(2,'0')}]`;
+    const formattedMessage = `${timeString} ${message}`;
+    setLogs(prev => [{ id: `log${Date.now()}`, timestamp: timestamp, message: formattedMessage, level }, ...prev].slice(0, 100));
+  }, []);
+
+  const handleScanAll = () => {
+    if (isScanning || servers.length === 0) return;
+
+    setIsScanning(true);
+    setScanProgress(0);
+    addLog('[INFO] Iniciando escaneo de todos los servidores...', 'info');
+
+    const totalDuration = 15 * 1000; // 15 seconds for simulation
+    const intervalTime = 150;
+    const steps = totalDuration / intervalTime;
+    let currentStep = 0;
+
+    const scanInterval = setInterval(() => {
+      currentStep++;
+      const progress = (currentStep / steps) * 100;
+      setScanProgress(progress);
+      
+      const remainingTime = totalDuration - (currentStep * intervalTime);
+      const etaDate = new Date(remainingTime);
+      const mm = String(etaDate.getUTCMinutes()).padStart(2, '0');
+      const ss = String(etaDate.getUTCSeconds()).padStart(2, '0');
+      const ms = String(etaDate.getUTCMilliseconds()).padStart(3, '0').substring(0,2);
+      setEta(`00:${mm}:${ss}`);
+      
+      // Simulate finding channels and memory usage
+      setTotalChannelsFound(prev => prev + Math.floor(Math.random() * 500));
+      setMemoryUsage(256 + Math.floor(Math.random() * 50));
+
+
+      if (currentStep % 10 === 0) {
+        addLog(`[INFO] Escaneo en progreso: ${Math.round(progress)}%`, 'info');
+      }
+
+      if (progress >= 100) {
+        clearInterval(scanInterval);
+        setIsScanning(false);
+        setEta('00:00:00');
+        addLog('[SUCCESS] Escaneo completado.', 'info');
+        // Update server stats after scan
+        const scanDate = new Date().toLocaleString('es-ES');
+        setServers(prevServers => prevServers.map(s => ({
+          ...s,
+          activeChannels: s.activeChannels ? s.activeChannels + Math.floor(Math.random() * 100) : Math.floor(Math.random() * 40000),
+          lastScan: scanDate,
+          status: 'Online'
+        })));
+        setCacheSize(prev => prev + Math.random() * 10);
+      }
+    }, intervalTime);
+  };
 
   const addServer = (server: Omit<Server, 'id' | 'status' | 'activeChannels' | 'lastScan'>) => {
     const newServer: Server = {
@@ -55,13 +114,6 @@ export default function DashboardPage() {
       addLog(`[WARN] Servidor eliminado: ${serverName}`, 'warning');
     }
   };
-  
-  const addLog = useCallback((message: string, level: 'info' | 'warning' | 'error') => {
-    const timestamp = new Date();
-    const timeString = `[${timestamp.getHours().toString().padStart(2,'0')}:${timestamp.getMinutes().toString().padStart(2,'0')}:${timestamp.getSeconds().toString().padStart(2,'0')}]`;
-    const formattedMessage = `${timeString} ${message}`;
-    setLogs(prev => [{ id: `log${Date.now()}`, timestamp: timestamp, message: formattedMessage, level }, ...prev].slice(0, 100));
-  }, []);
   
   const totalChannels = servers.reduce((acc, server) => acc + (server.activeChannels || 0), 0);
   const lastScan = servers.length > 0 ? servers.reduce((latest, s) => {
@@ -86,7 +138,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-dark-bg text-gray-200">
       <Header />
       
       <main className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
@@ -96,11 +148,20 @@ export default function DashboardPage() {
              <ServerList servers={servers} onDeleteServer={deleteServer} />
           </div>
           <div className="lg:col-span-1 space-y-6">
-            <ProgressOverview progress={25} eta="00:15:32" memoryUsage={256} totalChannels={5915} />
+            <ProgressOverview 
+              progress={scanProgress} 
+              eta={eta} 
+              memoryUsage={memoryUsage}
+              totalChannels={totalChannelsFound} 
+            />
           </div>
         </div>
         
-        <ControlPanel onScanAll={() => addLog('[INFO] Escaneando todos los servidores...','info')} onClearAll={handleClearAll} />
+        <ControlPanel 
+          onScanAll={handleScanAll} 
+          onClearAll={handleClearAll}
+          isScanning={isScanning}
+        />
         
         <StatsDashboard 
             serverCount={servers.length} 
