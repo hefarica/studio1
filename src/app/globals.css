@@ -2,103 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --primary-color: #6c5ce7;
-  --primary-dark: #5a4fcf;
-  --secondary-color: #a29bfe;
-  --success-color: #00b894;
-  --warning-color: #fdcb6e;
-  --error-color: #e84393;
-  --info-color: #74b9ff;
-  --dark-bg: #2d3436;
-  --darker-bg: #1e2426;
-  --card-bg: #636e72;
-  --card-hover: #74808a;
-  --text-primary: #ddd;
-  --text-secondary: #b2bec3;
-  --text-muted: #636e72;
-  --border-color: #4a5568;
-  --gradient-bg: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-}
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: var(--dark-bg);
-  color: var(--text-primary);
-  min-height: 100vh;
-  line-height: 1.6;
-}
-
 @layer base {
   :root {
-    --background: 222.2 84% 4.9%; /* #0c121c - Dark Blue/Gray */
-    --foreground: 210 40% 98%; /* #fafafa - Almost White */
-    --card: 222.2 47.4% 11.2%; /* #111827 - Darker Blue/Gray */
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 243.8 90% 64.3%; /* #6c5ce7 - Purple */
-    --primary-foreground: 210 40% 98%;
-    --secondary: 217.2 32.6% 17.5%; /* #212b3d */
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%; /* #d32f2f - Red */
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 243.8 90% 64.3%;
-    --radius: 0.5rem;
-    --chart-1: 243.8 90% 64.3%; /* Purple */
-    --chart-2: 142.1 76.2% 36.3%; /* Green */
-    --chart-3: 47.9 95.8% 53.1%; /* Yellow */
-    --chart-4: 346.8 77.2% 49.8%; /* Pink */
-    --chart-5: 20.5 90.2% 48.2%; /* Orange */
+    --primary-color: #6c5ce7;
+    --primary-dark: #5a4fcf;
+    --secondary-color: #a29bfe;
+    --success-color: #00b894;
+    --warning-color: #fdcb6e;
+    --error-color: #e84393;
+    --info-color: #74b9ff;
+    --dark-bg: #2d3436;
+    --darker-bg: #1e2426;
+    --card-bg: #636e72;
+    --card-hover: #74808a;
+    --text-primary: #ddd;
+    --text-secondary: #b2bec3;
+    --text-muted: #636e72;
+    --border-color: #4a5568;
+    --gradient-bg: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
   }
- 
-  .dark {
-    --background: 222.2 84% 4.9%; /* #0c121c - Dark Blue/Gray */
-    --foreground: 210 40% 98%; /* #fafafa - Almost White */
-    --card: 222.2 47.4% 11.2%; /* #111827 - Darker Blue/Gray */
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 243.8 90% 64.3%; /* #6c5ce7 - Purple */
-    --primary-foreground: 210 40% 98%;
-    --secondary: 217.2 32.6% 17.5%; /* #212b3d */
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%; /* #d32f2f - Red */
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 243.8 90% 64.3%;
-    --radius: 0.5rem;
-    --chart-1: 243.8 90% 64.3%;
-    --chart-2: 142.1 76.2% 36.3%;
-    --chart-3: 47.9 95.8% 53.1%;
-    --chart-4: 346.8 77.2% 49.8%;
-    --chart-5: 20.5 90.2% 48.2%;
-  }
-}
 
-@layer base {
   * {
-    @apply border-border;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
+
   body {
-    @apply bg-dark-bg text-text-primary;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: var(--dark-bg);
+    color: var(--text-primary);
+    min-height: 100vh;
+    line-height: 1.6;
   }
 }
