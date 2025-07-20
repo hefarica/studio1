@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
         success: false,
         error: analyzedError.message,
         code: analyzedError.code,
-        suggestions: analyzedError.suggestions,
+        suggestions: Array.isArray(analyzedError.suggestions) ? analyzedError.suggestions : [],
         isRetryable: analyzedError.isRetryable,
         severity: analyzedError.severity,
         duration: Math.round(duration / 1000),
