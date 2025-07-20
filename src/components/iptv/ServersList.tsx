@@ -12,7 +12,6 @@ import { IPTVErrorHandler } from '@/lib/error-handler';
 import { SERVER_STATUS_COLORS } from '@/lib/constants';
 import type { IPTVServer, ConnectionStatus } from '@/lib/types';
 import { clsx } from 'clsx';
-import { useIPTVCore } from '@/hooks/useIPTVCore';
 
 export const ServersList: React.FC = () => {
   const { servers, removeServer, updateServer } = useServersStore();
@@ -20,7 +19,7 @@ export const ServersList: React.FC = () => {
   const { addLog } = useLogsStore();
   
   const [connectionStates, setConnectionStates] = useState<Record<string, ConnectionStatus>>({});
-  const { iptvCore, isReady } = useIPTVCore();
+  const [iptvCore] = useState(() => new IPTVCore());
 
   const updateConnectionState = useCallback((serverId: string, updates: Partial<ConnectionStatus>) => {
     setConnectionStates(prev => ({
@@ -30,18 +29,19 @@ export const ServersList: React.FC = () => {
   }, []);
 
   const testServerConnection = useCallback(async (server: IPTVServer) => {
-    if (!iptvCore || !isReady) {
-        error('Sistema no listo', 'IPTVCore aún no está disponible.');
-        return;
-    }
     if (connectionStates[server.id]?.isConnecting) {
       warning('Conexión en progreso', `Ya se está probando la conexión a ${server.name}`);
       return;
     }
+    
+    if (!iptvCore) {
+        error('Sistema no listo', 'IPTVCore aún no está disponible.');
+        return;
+    }
   
     updateConnectionState(server.id, {
       isConnecting: true,
-      attempts: (connectionStates[server.id]?.attempts || 0) + 1,
+      attempts: 1,
       lastError: undefined,
     });
   
@@ -49,31 +49,89 @@ export const ServersList: React.FC = () => {
     addLog(`🔍 Probando conexión: ${server.name}`, 'info', { serverId: server.id });
   
     try {
-      const result = await iptvCore.testServerConnection(server);
+      const result = await iptvCore.testServerConnection(server, 5);
   
       if (result.success) {
-        updateConnectionState(server.id, { isConnecting: false });
+        updateConnectionState(server.id, {
+          isConnecting: false,
+          attempts: 0,
+          lastError: undefined
+        });
+
         updateServer(server.id, { 
           status: 'connected',
-          protocol: iptvCore.detectProtocol(result.data),
+          protocol: result.data ? iptvCore.detectProtocol(result.data) : null,
           lastScan: new Date().toLocaleString(),
+          updatedAt: new Date()
         });
-        success('Conexión exitosa', `${server.name} conectado en ${result.duration}s`);
-        addLog(`✅ ${server.name}: Conexión exitosa`, 'success', { serverId: server.id });
+
+        success(
+          'Conexión exitosa',
+          `${server.name} conectado en ${result.duration}s después de ${result.attempts} intento(s)`,
+          {
+            action: {
+              label: 'Escanear canales',
+              onClick: () => startServerScan(server)
+            }
+          }
+        );
+
+        addLog(`✅ ${server.name}: Conexión exitosa en ${result.duration}s (${result.attempts} intentos)`, 'success', { serverId: server.id });
       } else {
-        throw new Error(result.error || 'Error de conexión desconocido');
+        updateConnectionState(server.id, {
+            isConnecting: false,
+            attempts: result.attempts,
+            lastError: result.error
+        });
+        updateServer(server.id, { status: 'error' });
+        const errorDetails = [
+            `Error: ${result.error}`,
+            `Intentos realizados: ${result.attempts}`,
+            `Tiempo total: ${result.duration}s`
+        ];
+        if (result.diagnosis) {
+            errorDetails.push(`Diagnóstico: ${result.diagnosis.suggestions.join(', ')}`);
+        }
+        error(
+            `Error de conexión - ${server.name}`,
+            result.error || 'Error desconocido de conexión',
+            {
+              action: {
+                label: 'Ver detalles',
+                onClick: () => {
+                  alert(`DIAGNÓSTICO DETALLADO:\n\n${errorDetails.join('\n')}\n\nSUGERENCIAS:\n- Verificar URL y credenciales\n- Confirmar que el servidor esté online\n- Contactar al proveedor IPTV`);
+                }
+              }
+            }
+        );
+        addLog(`❌ ${server.name}: ${result.error} (${result.attempts} intentos, ${result.duration}s)`, 'error', { serverId: server.id });
+        if (result.diagnosis?.suggestions?.length > 0) {
+            addLog(`🩺 ${server.name}: ${result.diagnosis.suggestions.join(', ')}`, 'debug', { serverId: server.id });
+        }
       }
     } catch (err: any) {
-      const analyzedError = IPTVErrorHandler.analyzeError(err, { serverName: server.name });
-      updateConnectionState(server.id, { isConnecting: false, lastError: analyzedError.message });
-      updateServer(server.id, { status: 'error' });
-      error(`Error en ${server.name}`, analyzedError.message);
-      addLog(`❌ ${server.name}: ${analyzedError.message}`, 'error', { serverId: server.id });
+        updateConnectionState(server.id, {
+            isConnecting: false,
+            attempts: 0,
+            lastError: 'Error crítico durante la prueba'
+        });
+        updateServer(server.id, { status: 'error' });
+        error(
+            'Error crítico',
+            `${server.name}: ${err.message}`,
+            {
+              action: {
+                label: 'Reintentar',
+                onClick: () => testServerConnection(server)
+              }
+            }
+        );
+        addLog(`💥 ${server.name}: Error crítico - ${err.message}`, 'error', { serverId: server.id });
     }
-  }, [iptvCore, isReady, connectionStates, updateServer, addLog, success, error, warning, updateConnectionState]);
+  }, [iptvCore, connectionStates, updateServer, addLog, success, error, warning, updateConnectionState]);
 
   const startServerScan = useCallback(async (server: IPTVServer) => {
-    if (!isReady || !iptvCore) {
+    if (!iptvCore) {
       error('Error del sistema', 'IPTVCore no está disponible');
       addLog('❌ IPTVCore no está instanciado', 'error');
       return;
@@ -108,7 +166,7 @@ export const ServersList: React.FC = () => {
       error('Error de escaneo', `${server.name}: ${err.message}`);
       addLog(`💥 ${server.name}: Error en escaneo - ${err.message}`, 'error', { serverId: server.id });
     }
-  }, [addLog, error, iptvCore, isReady, success, updateServer]);
+  }, [addLog, error, iptvCore, success, updateServer]);
 
   const handleRemoveServer = (server: IPTVServer) => {
     if (confirm(`¿Estás seguro de eliminar "${server.name}"?`)) {
