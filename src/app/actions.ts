@@ -26,7 +26,8 @@ export async function fetchXtreamCodesData(serverUrl: string, username: string, 
 
         let allStreams: any[] = [];
         for (const category of categories) {
-            if (category.category_id === 'all') continue; 
+            // As per your logic, skip the 'all' category to avoid duplicates
+            if (category.category_id === 'all' || category.category_id === '0') continue; 
             
             try {
                 const streams = await fetchIptvData({ url: `${baseUrl}&action=get_live_streams&category_id=${category.category_id}` });
@@ -36,6 +37,7 @@ export async function fetchXtreamCodesData(serverUrl: string, username: string, 
                      console.warn(`Could not fetch streams for category ${category.category_name}. The response was not an array.`);
                 }
             } catch (e: any) {
+                // As per your logic, continue scanning other categories if one fails
                 console.warn(`Skipping category "${category.category_name}" due to error:`, e.message);
             }
         }
@@ -43,6 +45,6 @@ export async function fetchXtreamCodesData(serverUrl: string, username: string, 
         return allStreams;
     } catch (error: any) {
         console.error('Error fetching Xtream Codes data:', error.message);
-        throw new Error('Failed to connect to the IPTV server. Please check the URL and credentials.');
+        throw new Error(`Failed to connect to the IPTV server. Please check the URL and credentials. Details: ${error.message}`);
     }
 }

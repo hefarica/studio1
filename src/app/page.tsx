@@ -61,18 +61,22 @@ export default function DashboardPage() {
     setIsScanning(true);
     setScanProgress(0);
     setEta('Calculando...');
-
     addLog(`[INFO] Iniciando escaneo real para ${serversToScan.length} servidor(es).`, 'info');
 
     // Reset total channels if scanning all, otherwise just subtract the channels of servers being scanned
     if (serversToScan.length === servers.length) {
       setTotalChannelsFound(0);
     } else {
-      const channelsToReset = serversToScan.reduce((acc, s) => acc + (s.activeChannels || 0), 0);
+      const channelsToReset = servers.reduce((acc, s) => {
+        if (serversToScan.some(sts => sts.id === s.id)) {
+            return acc + (s.activeChannels || 0);
+        }
+        return acc;
+      }, 0);
       setTotalChannelsFound(prev => prev - channelsToReset);
     }
     
-    // Set servers to scanning state
+    // Set servers to scanning state and reset their individual channel counts
     setServers(prev => prev.map(s => serversToScan.some(sts => sts.id === s.id) ? { ...s, status: 'Scanning', activeChannels: 0 } : s));
 
     let grandTotal = 0;
@@ -97,7 +101,8 @@ export default function DashboardPage() {
         
         setTotalChannelsFound(prevTotal => prevTotal + channelsFound);
         
-        setScanProgress(prev => prev + (100 / serversToScan.length));
+        const currentProgress = (serversToScan.indexOf(server) + 1) / serversToScan.length * 100;
+        setScanProgress(currentProgress);
 
       } catch (error: any) {
         addLog(`[ERROR] Falló el escaneo para ${server.name}: ${error.message}`, 'error');
@@ -107,7 +112,7 @@ export default function DashboardPage() {
          toast({
           variant: "destructive",
           title: "Error de Escaneo",
-          description: `No se pudo conectar con el servidor: ${server.name}. Por favor, revise la URL y las credenciales.`,
+          description: `No se pudo conectar con el servidor ${server.name}: ${error.message}`,
         });
       }
     }
