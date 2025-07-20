@@ -77,3 +77,5 @@ export interface StatsData {
   failedScans: number;
   avgScanTime: number;
 }
+
+export type Server = IPTVServer;

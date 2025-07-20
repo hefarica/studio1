@@ -11,10 +11,10 @@ const CategorySchema = z.object({
   category_name: z.string(),
 });
 const ChannelSchema = z.object({
-  stream_id: z.string(),
+  stream_id: z.coerce.string(),
   name: z.string(),
   stream_icon: z.string().optional(),
-  category_id: z.string(),
+  category_id: z.coerce.string(),
 });
 const ServerInfoSchema = z.object({
   server_info: z.any(),
@@ -45,8 +45,10 @@ async function safeFetchJSON(url, timeout = CONFIG.REQUEST_TIMEOUT) {
     // Log non-200 direct responses but continue to proxies
     console.warn(`[safeFetch] Direct request to ${url} failed with status: ${directRes.status}`);
   } catch (err) {
-    // Log direct connection errors but continue to proxies
-    console.warn(`[safeFetch] Direct request to ${url} failed: ${err.message}`);
+    if (err instanceof Error) {
+        // Log direct connection errors but continue to proxies
+        console.warn(`[safeFetch] Direct request to ${url} failed: ${err.message}`);
+    }
   } finally {
     clearTimeout(timeoutId);
   }
@@ -72,7 +74,9 @@ async function safeFetchJSON(url, timeout = CONFIG.REQUEST_TIMEOUT) {
         }
       }
     } catch (err) {
-      console.warn(`[safeFetch] Proxy ${i + 1} failed: ${err.message}`);
+        if (err instanceof Error) {
+            console.warn(`[safeFetch] Proxy ${i + 1} failed: ${err.message}`);
+        }
     } finally {
         clearTimeout(proxyTimeoutId);
     }
@@ -120,7 +124,9 @@ export async function POST(request) {
             console.warn(`[SCAN] Categoría ${category.category_name} con formato inválido: ${channelsParsed.error.message}`);
             return 0; // Return 0 for invalid categories but don't fail the whole scan
           } catch (error) {
-            console.warn(`[SCAN] Error obteniendo canales de categoría ${category.category_name}: ${error.message}`);
+            if (error instanceof Error) {
+                console.warn(`[SCAN] Error obteniendo canales de categoría ${category.category_name}: ${error.message}`);
+            }
             return 0; // Don't fail the whole scan for one bad category
           }
         })
@@ -140,7 +146,10 @@ export async function POST(request) {
     return NextResponse.json({ success: true, results });
 
   } catch (error) {
-    console.error(`[API/scan-server] Fatal error: ${error.message}`);
-    return NextResponse.json({ success: false, results: null, error: error.message }, { status: 502 });
+    if (error instanceof Error) {
+        console.error(`[API/scan-server] Fatal error: ${error.message}`);
+        return NextResponse.json({ success: false, results: null, error: error.message }, { status: 502 });
+    }
+    return NextResponse.json({ success: false, results: null, error: 'An unknown error occurred' }, { status: 502 });
   }
 }

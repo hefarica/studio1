@@ -109,20 +109,10 @@ async function scanServersAsync(scanId: string, servers: IPTVServer[], config: a
 
       try {
         // Escanear servidor con manejo de errores
-        const result = await IPTVErrorHandler.handleRetry(
+        const result: {success: boolean, results?: { totalChannels: number, categories: any[]}, error?: string} = await IPTVErrorHandler.handleRetry(
           async () => {
             return await iptvCore.scanServer(
-              server,
-              (serverProgress) => {
-                // Actualizar progreso específico del servidor
-                const detailedProgress = {
-                  ...progress,
-                  currentCategory: serverProgress.currentCategory,
-                  serverProgress: serverProgress.percentage || 0
-                };
-                updateScanProgress(scanId, detailedProgress);
-              },
-              () => abortController.signal.aborted
+              server
             );
           },
           { 
@@ -132,13 +122,26 @@ async function scanServersAsync(scanId: string, servers: IPTVServer[], config: a
           3 // máximo 3 intentos para escaneo completo
         );
 
-        results.push(result);
-        totalChannelsFound += result.channels;
+        if (result.success && result.results) {
+          const scanResult: ScanResult = {
+            success: true,
+            channels: result.results.totalChannels,
+            categories: result.results.categories.length,
+            errors: [],
+            duration: 0, // Placeholder
+            serverId: server.id
+          };
+          results.push(scanResult);
+          totalChannelsFound += scanResult.channels;
 
-        console.log(`✅ [SCAN] ${server.name}: ${result.channels} canales en ${result.duration}s`);
+          console.log(`✅ [SCAN] ${server.name}: ${scanResult.channels} canales`);
 
-        // Notificar servidor completado
-        notifyServerCompleted(scanId, result);
+          // Notificar servidor completado
+          notifyServerCompleted(scanId, scanResult);
+        } else {
+            throw new Error(result.error || 'Unknown scan error');
+        }
+
 
       } catch (serverError: any) {
         const errorResult: ScanResult = {
@@ -177,7 +180,7 @@ async function scanServersAsync(scanId: string, servers: IPTVServer[], config: a
       successfulScans: results.filter(r => r.success).length,
       failedScans: results.filter(r => !r.success).length,
       totalChannels: totalChannelsFound,
-      duration: Date.now() - scanData.progress.startTime
+      duration: Date.now() - (scanData.progress.startTime || Date.now())
     });
 
     console.log(`🎉 [SCAN-ALL] Escaneo ${scanId} completado: ${totalChannelsFound} canales`);
@@ -197,7 +200,7 @@ function getServersById(serverIds: string[]): IPTVServer[] {
   // Por ahora simulamos datos
   return serverIds.map((id, index) => ({
     id,
-    name: `Servidor ${index + 1}`,
+    name: `Servidor ${id}`,
     url: `http://example${index + 1}.com:8080`,
     username: `user${index + 1}`,
     password: `pass${index + 1}`,
