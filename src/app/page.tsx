@@ -23,7 +23,7 @@ const initialServers: Server[] = [
     status: 'Online', 
     activeChannels: 759,
     user: 'uqb3fbu3b',
-    password: 'Password123', // Example password
+    password: 'Password123',
     lastScan: 'Nunca',
   },
 ];
@@ -64,9 +64,12 @@ export default function DashboardPage() {
 
     addLog(`[INFO] Iniciando escaneo real para ${serversToScan.length} servidor(es).`, 'info');
 
-    // Reset total channels if scanning all
+    // Reset total channels if scanning all, otherwise just subtract the channels of servers being scanned
     if (serversToScan.length === servers.length) {
       setTotalChannelsFound(0);
+    } else {
+      const channelsToReset = serversToScan.reduce((acc, s) => acc + (s.activeChannels || 0), 0);
+      setTotalChannelsFound(prev => prev - channelsToReset);
     }
     
     // Set servers to scanning state
@@ -92,10 +95,8 @@ export default function DashboardPage() {
             : s
         ));
         
-        // Use functional update to get the latest state
         setTotalChannelsFound(prevTotal => prevTotal + channelsFound);
         
-        // Simple progress update
         setScanProgress(prev => prev + (100 / serversToScan.length));
 
       } catch (error: any) {
@@ -106,7 +107,7 @@ export default function DashboardPage() {
          toast({
           variant: "destructive",
           title: "Error de Escaneo",
-          description: `No se pudo conectar con el servidor: ${server.name}`,
+          description: `No se pudo conectar con el servidor: ${server.name}. Por favor, revise la URL y las credenciales.`,
         });
       }
     }
@@ -126,9 +127,6 @@ export default function DashboardPage() {
     const serverToScan = servers.find(s => s.id === serverId);
     if (!serverToScan) return;
 
-    // Reset channels for the specific server and update total
-    setTotalChannelsFound(prev => prev - (serverToScan.activeChannels || 0));
-    
     runScan([serverToScan]);
   };
 
@@ -214,12 +212,12 @@ export default function DashboardPage() {
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <AiOptimizer />
-          <ChannelExporter channelCount={totalChannels} />
+          <ChannelExporter channelCount={totalChannelsFound} />
         </div>
 
         <StatsDashboard 
             serverCount={servers.length} 
-            channelCount={totalChannels}
+            channelCount={totalChannelsFound}
             lastScanTime={lastScan}
             cacheSize={cacheSize}
         />

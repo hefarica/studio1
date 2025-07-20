@@ -1,6 +1,7 @@
 'use server'
 
 import { optimizeScanConfiguration, OptimizeScanConfigurationInput, OptimizeScanConfigurationOutput } from '@/ai/flows/optimize-scan-configuration';
+import { fetchIptvData } from '@/ai/flows/fetch-iptv-data';
 
 export async function getAiOptimization(input: OptimizeScanConfigurationInput): Promise<OptimizeScanConfigurationOutput> {
   try {
@@ -12,59 +13,29 @@ export async function getAiOptimization(input: OptimizeScanConfigurationInput): 
   }
 }
 
-async function fetchWithTimeout(resource: string, options: RequestInit & { timeout: number }) {
-  const { timeout, ...rest } = options;
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  
-  try {
-    const response = await fetch(resource, {
-      ...rest,
-      signal: controller.signal
-    });
-    return response;
-  } finally {
-    clearTimeout(id);
-  }
-}
-
-
 export async function fetchXtreamCodesData(serverUrl: string, username: string, password?: string) {
     const baseUrl = `${serverUrl}/player_api.php?username=${username}&password=${password ?? ''}`;
 
     try {
-        const categoriesResponse = await fetchWithTimeout(`${baseUrl}&action=get_live_categories`, { timeout: 15000 });
-        if (!categoriesResponse.ok) {
-            // Handle non-JSON error responses gracefully
-            const errorText = await categoriesResponse.text();
-            console.error(`Failed to fetch categories, status: ${categoriesResponse.status}, response: ${errorText}`);
-            throw new Error(`Failed to fetch categories. Server responded with status ${categoriesResponse.status}.`);
-        }
-        const categories = await categoriesResponse.json();
+        const categories = await fetchIptvData({ url: `${baseUrl}&action=get_live_categories` });
 
         if (!Array.isArray(categories)) {
-            // This can happen if the API returns an auth error object instead of an array
-            console.error('Categories response is not an array.', categories);
-            throw new Error('Failed to authenticate or invalid categories format.');
+            console.error('Categories response is not an array or auth failed.', categories);
+            throw new Error('Authentication failed or invalid categories format from server.');
         }
 
         let allStreams: any[] = [];
         for (const category of categories) {
-            // Skip the "All" category to avoid duplicates and unnecessary processing, as seen in the provided logic.
             if (category.category_id === 'all') continue; 
             
             try {
-                const streamsResponse = await fetchWithTimeout(`${baseUrl}&action=get_live_streams&category_id=${category.category_id}`, { timeout: 20000 });
-                if (streamsResponse.ok) {
-                    const streams = await streamsResponse.json();
-                    if (Array.isArray(streams)) {
-                        allStreams = [...allStreams, ...streams];
-                    }
+                const streams = await fetchIptvData({ url: `${baseUrl}&action=get_live_streams&category_id=${category.category_id}` });
+                if (Array.isArray(streams)) {
+                    allStreams = [...allStreams, ...streams];
                 } else {
-                     console.warn(`Could not fetch streams for category ${category.category_name}. Status: ${streamsResponse.status}`);
+                     console.warn(`Could not fetch streams for category ${category.category_name}. The response was not an array.`);
                 }
             } catch (e: any) {
-                // Log error for a specific category but continue with others
                 console.warn(`Skipping category "${category.category_name}" due to error:`, e.message);
             }
         }
@@ -72,7 +43,6 @@ export async function fetchXtreamCodesData(serverUrl: string, username: string, 
         return allStreams;
     } catch (error: any) {
         console.error('Error fetching Xtream Codes data:', error.message);
-        // Provide a more user-friendly error
-        throw new Error('Failed to fetch data from the server. Please check the URL and credentials.');
+        throw new Error('Failed to connect to the IPTV server. Please check the URL and credentials.');
     }
 }
