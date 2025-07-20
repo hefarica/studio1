@@ -20,12 +20,12 @@ import { Plus, TestTubeDiagonal } from 'lucide-react';
 const formSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   url: z.string().url('Invalid URL'),
-  user: z.string().min(1, 'User is required'),
+  username: z.string().min(1, 'Username is required'),
   password: z.string().optional(),
 });
 
 type ServerConfigProps = {
-  onAddServer: (server: Omit<Server, 'id' | 'status' | 'activeChannels' | 'lastScan'>) => void;
+  onAddServer: (server: Omit<Server, 'id' | 'status' | 'channels' | 'lastScan' | 'protocol' | 'categories' | 'totalChannels' | 'createdAt' | 'updatedAt'>) => void;
 };
 
 export function ServerConfig({ onAddServer }: ServerConfigProps) {
@@ -34,14 +34,14 @@ export function ServerConfig({ onAddServer }: ServerConfigProps) {
     defaultValues: {
       name: 'EVESTV IP TV',
       url: 'http://126954339934.d4ktv.info:80',
-      user: 'uqb3fbu3b',
+      username: 'uqb3fbu3b',
       password: '',
     },
   });
 
   function onSubmit(values: z.infer<typeof formSchema>) {
     onAddServer(values);
-    form.reset({ name: '', url: '', user: '', password: '' });
+    form.reset({ name: '', url: '', username: '', password: '' });
   }
 
   const handleTestConnections = () => {
@@ -89,7 +89,7 @@ export function ServerConfig({ onAddServer }: ServerConfigProps) {
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
-                  name="user"
+                  name="username"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Username</FormLabel>

@@ -30,7 +30,7 @@ export default function DashboardPage() {
     addLog('[SYSTEM] Dashboard initialized');
   }, [addLog]);
 
-  const handleAddServer = (server: Omit<Server, 'id' | 'status' | 'activeChannels' | 'lastScan'>) => {
+  const handleAddServer = (server: Omit<Server, 'id' | 'channels' | 'lastScan' | 'status' | 'protocol' | 'categories' | 'totalChannels' | 'createdAt' | 'updatedAt'>) => {
     // This is a simplified add. A real app would have more robust validation and feedback.
     addServer(server);
     toast({
@@ -91,7 +91,7 @@ export default function DashboardPage() {
             <ProgressOverview
               progress={progress.percentage}
               eta={etaString}
-              memoryUsage={Math.round(performance.memory?.usedJSHeapSize / 1024 / 1024) || 25}
+              memoryUsage={isClient && window.performance?.memory ? Math.round(window.performance.memory.usedJSHeapSize / 1024 / 1024) : 25}
               totalChannels={progress.channelsFound}
             />
             <ChannelExporter channelCount={totalChannels} />
