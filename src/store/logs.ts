@@ -7,7 +7,7 @@ import { CONFIG } from '@/lib/constants';
 interface LogsState {
   logs: LogEntry[];
   isAutoScroll: boolean;
-  addLog: (message: string, level?: LogLevel, meta?: { serverId?: string; category?: string }) => void;
+  addLog: (message: string | any, level?: LogLevel, meta?: { serverId?: string; category?: string }) => void;
   clearLogs: () => void;
   setAutoScroll: (autoScroll: boolean) => void;
   exportLogs: () => string;
@@ -16,7 +16,12 @@ interface LogsState {
 export const useLogsStore = create<LogsState>()((set, get) => ({
   logs: [],
   isAutoScroll: true,
-  addLog: (message, level = 'info', meta = {}) => {
+  addLog: (rawMessage, level = 'info', meta = {}) => {
+    // 1) Normalize message: if it's an array, join it; otherwise, cast it to a string
+    const message = Array.isArray(rawMessage)
+      ? rawMessage.join(' ')
+      : String(rawMessage ?? '');
+
     const newLog: LogEntry = {
       id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       timestamp: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit'}),
