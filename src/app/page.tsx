@@ -63,18 +63,21 @@ export default function DashboardPage() {
     setEta('Calculating...');
     addLog(`[INFO] Starting real scan for ${serversToScan.length} server(s).`, 'info');
 
-    // Reset channel counts for the servers being scanned.
-    const channelsToReset = servers.reduce((acc, s) => {
-      if (serversToScan.some(sts => sts.id === s.id)) {
-          return acc + (s.activeChannels || 0);
-      }
-      return acc;
-    }, 0);
-    setTotalChannelsFound(prev => Math.max(0, prev - channelsToReset));
+    const serverIdsToScan = serversToScan.map(s => s.id);
     
-    setServers(prev => prev.map(s => serversToScan.some(sts => sts.id === s.id) ? { ...s, status: 'Scanning', activeChannels: 0 } : s));
+    // Reset channel counts for the servers being scanned.
+    setServers(prev => prev.map(s => 
+      serverIdsToScan.includes(s.id) 
+        ? { ...s, status: 'Scanning', activeChannels: 0 } 
+        : s
+    ));
+    // Recalculate total channels based on non-scanned servers
+    const remainingChannels = servers
+      .filter(s => !serverIdsToScan.includes(s.id))
+      .reduce((acc, server) => acc + (server.activeChannels || 0), 0);
+    setTotalChannelsFound(remainingChannels);
 
-    let grandTotal = 0;
+    let grandTotal = remainingChannels;
     const scanStartTime = Date.now();
 
     for (let i = 0; i < serversToScan.length; i++) {
@@ -90,7 +93,7 @@ export default function DashboardPage() {
             const scanDate = new Date().toLocaleString('en-US');
             
             setServers(prevServers => prevServers.map(s =>
-            s.id === server.id 
+              s.id === server.id 
                 ? { ...s, activeChannels: channelsFound, lastScan: scanDate, status: 'Online' } 
                 : s
             ));
@@ -101,20 +104,29 @@ export default function DashboardPage() {
             setScanProgress(currentProgress);
 
         } catch (error: any) {
-            addLog(`[ERROR] Scan failed for ${server.name}: ${error.message}`, 'error');
+            const errorMessage = error.message || 'An unknown error occurred.';
+            addLog(`[ERROR] Scan failed for ${server.name}: ${errorMessage}`, 'error');
             setServers(prevServers => prevServers.map(s =>
-            s.id === server.id ? { ...s, status: 'Error' } : s
+              s.id === server.id ? { ...s, status: 'Error' } : s
             ));
+            
+            let toastDescription = `Please check the server URL and credentials. Details: ${errorMessage}`;
+            if (errorMessage.includes('512')) {
+                toastDescription = "The server reported an internal error (512). This is often temporary. Please wait a few minutes and try again.";
+            } else if (errorMessage.includes('timeout')) {
+                toastDescription = "The connection to the server timed out. This could be due to network issues or the server being slow to respond.";
+            }
+
             toast({
                 variant: "destructive",
                 title: `Scan Error for ${server.name}`,
-                description: error.message,
+                description: toastDescription,
             });
         }
     }
 
     const scanDuration = (Date.now() - scanStartTime) / 1000;
-    addLog(`[SUCCESS] Scan completed in ${scanDuration.toFixed(2)} seconds. Total channels found: ${grandTotal.toLocaleString()}`, 'success');
+    addLog(`[SUCCESS] Scan completed in ${scanDuration.toFixed(2)} seconds. Total channels found: ${totalChannelsFound.toLocaleString()}`, 'success');
     
     setIsScanning(false);
     setScanProgress(100);
