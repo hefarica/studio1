@@ -27,15 +27,15 @@ const IPTVConstructor = () => {
 
   // Cargar servidores desde localStorage al montar
   useEffect(() => {
-    const savedServers = localStorage.getItem('iptv_servers');
-    if (savedServers) {
-      try {
-        const parsedServers = JSON.parse(savedServers);
-        setServers(parsedServers);
-        updateStats(parsedServers);
-      } catch (error) {
+    try {
+        const savedServers = localStorage.getItem('iptv_servers');
+        if (savedServers) {
+            const parsedServers = JSON.parse(savedServers);
+            setServers(parsedServers);
+            updateStats(parsedServers);
+        }
+    } catch (error) {
         addLog('Error cargando servidores guardados', 'error');
-      }
     }
   }, []);
 
