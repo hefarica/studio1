@@ -1,29 +1,22 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { Icons } from '@/components/icons';
-import { PlusCircle } from 'lucide-react';
+import { MonitorSmartphone } from 'lucide-react';
 
-type HeaderProps = {
-  onAddServer: () => void;
-};
-
-export function Header({ onAddServer }: HeaderProps) {
+export function Header() {
   return (
-    <header className="bg-card dark:bg-gray-800/50 border-b shadow-sm">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Icons.Logo className="h-8 w-8 text-primary" />
-            <h1 className="text-2xl font-bold text-foreground">
-              IPTV Genius Scanner
+    <header className="bg-transparent pt-8">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 text-center">
+        <div className="flex items-center justify-center gap-3">
+            <div className="bg-foreground p-2 rounded-md">
+                <MonitorSmartphone className="h-6 w-6 text-background" />
+            </div>
+            <h1 className="text-3xl font-bold text-foreground">
+              Constructor IPTV Pro Multi-Servidor - Sistema Inteligente
             </h1>
-          </div>
-          <Button onClick={onAddServer}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Add Server
-          </Button>
         </div>
+        <p className="text-muted-foreground mt-2">
+            Base de datos incremental con cache inteligente
+        </p>
       </div>
     </header>
   );

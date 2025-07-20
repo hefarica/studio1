@@ -1,99 +1,113 @@
 'use client';
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import type { ScanProgress } from '@/lib/types';
-import { Zap, Clock, Tv, MemoryStick } from 'lucide-react';
-import { useMemo, useState, useEffect } from 'react';
+import { BrainCircuit, Clock, MemoryStick, Tv } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { getAiOptimization } from '@/app/actions';
+import { Button } from '../ui/button';
+import { Loader } from 'lucide-react';
+import type { AiOptimizationSuggestion } from '@/lib/types';
 
-const ChartTooltipContent = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="rounded-lg border bg-background p-2 shadow-sm">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="flex flex-col">
-            <span className="text-[0.70rem] uppercase text-muted-foreground">
-              Usage
-            </span>
-            <span className="font-bold text-muted-foreground">
-              {payload[0].value} MB
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return null;
-}
+type ProgressOverviewProps = {
+  progress: number;
+  eta: string;
+  memoryUsage: number;
+  totalChannels: number;
+};
 
 export function ProgressOverview({
   progress,
   eta,
   memoryUsage,
   totalChannels,
-}: ScanProgress) {
-  
+}: ProgressOverviewProps) {
   const [isClient, setIsClient] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimization, setOptimization] = useState<AiOptimizationSuggestion | null>(null);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  const chartData = useMemo(() => [
-    { name: 'Memory', usage: memoryUsage.toFixed(2) }
-  ], [memoryUsage]);
+  const handleOptimize = async () => {
+    setOptimizing(true);
+    setOptimization(null);
+    try {
+      const result = await getAiOptimization({
+        scanData: JSON.stringify({
+          history: [{ server: 'EVESTV IP TV', channels: 39860, time: 240 }],
+        }),
+        currentConfiguration: JSON.stringify({ parallel: 3, chunkSize: 2500 }),
+      });
+      setOptimization(result);
+    } catch (error) {
+      console.error('Optimization failed', error);
+    } finally {
+      setOptimizing(false);
+    }
+  };
 
   return (
-    <Card className="shadow-lg rounded-xl">
+    <Card className="shadow-lg rounded-lg bg-card">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Zap className="h-6 w-6 text-primary" />
-          Real-time Scan Progress
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <BrainCircuit className="h-5 w-5" />
+          AI Optimizer
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
           <div>
             <div className="flex justify-between items-center mb-2">
-              <span className="text-lg font-semibold text-primary">{progress}%</span>
-              <span className="text-sm text-muted-foreground">Complete</span>
+              <span className="text-sm font-medium">Scan Progress</span>
+              <span className="text-sm font-bold text-accent">{progress}%</span>
             </div>
-            <Progress value={progress} aria-label={`${progress}% scan complete`} />
+            <Progress value={progress} className="w-full" />
+            <div className="text-xs text-muted-foreground mt-1 text-right">
+              ETA: {eta}
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-            <div className="bg-secondary/50 p-4 rounded-lg">
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <Tv className="h-6 w-6 mx-auto text-accent" />
+              <p className="mt-2 text-sm text-muted-foreground">Active Channels</p>
+              <p className="font-bold text-lg">
+                {isClient ? totalChannels.toLocaleString() : '...'}
+              </p>
+            </div>
+            <div>
+              <MemoryStick className="h-6 w-6 mx-auto text-accent" />
+              <p className="mt-2 text-sm text-muted-foreground">Memory</p>
+              <p className="font-bold text-lg">{memoryUsage} MB</p>
+            </div>
+            <div>
               <Clock className="h-6 w-6 mx-auto text-accent" />
               <p className="mt-2 text-sm text-muted-foreground">ETA</p>
               <p className="font-bold text-lg">{eta}</p>
             </div>
-            <div className="bg-secondary/50 p-4 rounded-lg">
-              <Tv className="h-6 w-6 mx-auto text-accent" />
-              <p className="mt-2 text-sm text-muted-foreground">Active Channels</p>
-              <p className="font-bold text-lg">{isClient ? totalChannels.toLocaleString() : totalChannels}</p>
-            </div>
-            <div className="bg-secondary/50 p-4 rounded-lg col-span-2">
-              <MemoryStick className="h-6 w-6 mx-auto text-accent" />
-              <p className="mt-2 text-sm text-muted-foreground">Memory Usage</p>
-              <div className="h-16 w-full mt-1" data-ai-hint="memory usage chart">
-                <ResponsiveContainer width="100%" height="100%">
-                   <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 0, left: 0, bottom: 5 }}>
-                    <XAxis type="number" hide domain={[0, 512]}/>
-                    <YAxis type="category" dataKey="name" hide />
-                    <Tooltip cursor={{fill: 'transparent'}} content={<ChartTooltipContent />} />
-                    <Bar dataKey="usage" fill="var(--color-chart-2)" radius={[0, 4, 4, 0]} barSize={20} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
           </div>
+          
+          <Button onClick={handleOptimize} disabled={optimizing} className="w-full bg-primary hover:bg-primary/90">
+            {optimizing ? (
+              <>
+                <Loader className="mr-2 h-4 w-4 animate-spin" />
+                Optimizing...
+              </>
+            ) : (
+              'Optimize Scan with AI'
+            )}
+          </Button>
+
+          {optimization && (
+            <div className="text-xs space-y-2 mt-4 bg-background/50 p-3 rounded-md">
+              <p><strong className='text-accent'>Frequency:</strong> {optimization.suggestedFrequency}</p>
+              <p><strong className='text-accent'>Prioritization:</strong> {optimization.serverPrioritization.join(', ')}</p>
+              <p><strong className='text-accent'>Resources:</strong> {optimization.resourceAllocation}</p>
+              <p><strong className='text-accent'>Notes:</strong> {optimization.additionalNotes}</p>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

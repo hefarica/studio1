@@ -6,44 +6,30 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { LogEntry } from '@/lib/types';
-import { FileText, AlertCircle, Info, AlertTriangle } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { FileText, Trash2 } from 'lucide-react';
 
-const levelConfig = {
-  info: { icon: Info, className: 'text-blue-500' },
-  warning: { icon: AlertTriangle, className: 'text-yellow-500' },
-  error: { icon: AlertCircle, className: 'text-red-500' },
-};
-
-export function ActivityLogs({ logs }: { logs: LogEntry[] }) {
+export function ActivityLogs({ logs, onClearLog }: { logs: LogEntry[], onClearLog: () => void }) {
   return (
-    <Card className="shadow-lg rounded-xl">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="h-6 w-6 text-primary" />
-          Activity Logs
+    <Card className="bg-card shadow-lg rounded-lg">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <FileText className="h-5 w-5" />
+          Log de Actividades
         </CardTitle>
+        <Button variant="secondary" size="sm" onClick={onClearLog}>
+          <Trash2 className="mr-2 h-4 w-4" />
+          Limpiar Log
+        </Button>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="h-80 w-full pr-4">
-          <div className="space-y-4">
-            {logs.map(log => {
-              const Icon = levelConfig[log.level].icon;
-              const iconClass = levelConfig[log.level].className;
-              return (
-                <div key={log.id} className="flex items-start gap-3">
-                  <Icon className={`h-5 w-5 mt-0.5 shrink-0 ${iconClass}`} />
-                  <div className="flex-1">
-                    <p className="text-sm text-foreground">{log.message}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(log.timestamp, { addSuffix: true })}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+        <ScrollArea className="h-48 w-full rounded-md border border-border bg-black p-4 font-mono text-xs text-green-400">
+          <div className="space-y-1">
+            {logs.map(log => (
+              <p key={log.id}>{log.message}</p>
+            ))}
           </div>
         </ScrollArea>
       </CardContent>

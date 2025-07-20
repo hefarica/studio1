@@ -4,8 +4,11 @@ export interface Server {
   id: string;
   name: string;
   url: string;
+  user: string;
+  password?: string;
   status: ServerStatus;
   activeChannels?: number;
+  lastScan?: string;
 }
 
 export interface LogEntry {
@@ -15,11 +18,11 @@ export interface LogEntry {
   level: 'info' | 'warning' | 'error';
 }
 
-export interface ScanProgress {
-  progress: number;
-  eta: string;
-  memoryUsage: number;
-  totalChannels: number;
+export interface Stats {
+    serverCount: number;
+    channelCount: number;
+    lastScanTime: string;
+    cacheSize: number;
 }
 
 export type AiOptimizationSuggestion = {
