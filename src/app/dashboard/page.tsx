@@ -1,104 +1,106 @@
 'use client';
 
-import React, { useEffect } from 'react';
-import { DashboardHeader } from '@/components/iptv/DashboardHeader';
-import { ServerConfig } from '@/components/iptv/ServerConfig';
-import { ServersList } from '@/components/iptv/ServersList';
-import { ControlPanel } from '@/components/iptv/ControlPanel';
-import { ProgressBar } from '@/components/iptv/ProgressBar';
-import { StatsCards } from '@/components/iptv/StatsCards';
-import { ActivityLog } from '@/components/iptv/ActivityLog';
-import { NotificationProvider } from '@/components/providers/NotificationProvider';
-import { useLogs } from '@/store/logs';
+import React, { useEffect, useState } from 'react';
+import { Header } from '@/components/dashboard/header';
+import { ServerConfig } from '@/components/dashboard/server-config';
+import { ServerList } from '@/components/dashboard/server-list';
+import { ControlPanel } from '@/components/dashboard/control-panel';
+import { StatsDashboard } from '@/components/dashboard/stats-dashboard';
+import { ProgressOverview } from '@/components/dashboard/progress-overview';
+import { AiOptimizer } from '@/components/dashboard/ai-optimizer';
+import { ActivityLogs } from '@/components/dashboard/activity-logs';
+import { Toaster } from '@/components/ui/toaster';
 import { useServersStore } from '@/store/servers';
+import { useScanningStore } from '@/store/scanning';
+import { useLogsStore } from '@/store/logs';
+import { useToast } from '@/hooks/use-toast';
+import { ChannelExporter } from '@/components/dashboard/channel-exporter';
+import type { Server } from '@/lib/types';
 
 export default function DashboardPage() {
-  const { addLog } = useLogs();
-  const { refreshStats } = useServersStore();
+  const { servers, addServer, deleteServer, clearAllServers, stats } = useServersStore();
+  const { isScanning, progress, startScan, stopScan } = useScanningStore();
+  const { logs, clearLogs, addLog } = useLogsStore();
+  const { toast } = useToast();
+
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    // Initialize dashboard
-    addLog('🚀 Dashboard Studio1 IPTV Pro iniciado correctamente', 'success');
-    addLog('📋 Sistema listo para configurar servidores IPTV', 'info');
-    addLog('🔧 Manejo avanzado de errores 512 y "unexpected response" activo', 'info');
-    addLog('🤖 Sistema de IA con Genkit configurado', 'info');
-    
-    // Refresh stats on mount
-    refreshStats();
-    
-    // Log system info
-    if (typeof window !== 'undefined') {
-        const systemInfo = {
-          userAgent: navigator.userAgent.slice(0, 50) + '...',
-          language: navigator.language,
-          platform: navigator.platform,
-          cookieEnabled: navigator.cookieEnabled,
-          onLine: navigator.onLine
-        };
-        
-        addLog(`💻 Sistema: ${systemInfo.platform} | ${systemInfo.language} | Online: ${systemInfo.onLine}`, 'debug');
-    }
+    setIsClient(true);
+    addLog('[SYSTEM] Dashboard initialized');
+  }, [addLog]);
 
-    // Cleanup function
-    return () => {
-      addLog('📴 Dashboard cerrado', 'info');
-    };
-  }, [addLog, refreshStats]);
+  const handleAddServer = (server: Omit<Server, 'id' | 'status' | 'activeChannels' | 'lastScan'>) => {
+    // This is a simplified add. A real app would have more robust validation and feedback.
+    addServer(server);
+    toast({
+      title: 'Server Added',
+      description: `${server.name} has been configured.`,
+    });
+  };
+
+  const handleScanAll = () => {
+    if (servers.length === 0) {
+      toast({
+        title: 'No Servers',
+        description: 'Please add a server before scanning.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const serverIds = servers.map(s => s.id);
+    startScan(serverIds);
+    toast({
+      title: 'Scanning Started',
+      description: `Scanning ${servers.length} server(s).`,
+    });
+  };
+
+  const totalChannels = stats.totalChannels || 0;
+
+  const etaSeconds = progress.eta ? Math.round(progress.eta / 1000) : 0;
+  const etaString = etaSeconds > 60
+    ? `${Math.floor(etaSeconds / 60)}m ${etaSeconds % 60}s`
+    : `${etaSeconds}s`;
+
+  if (!isClient) {
+    return null; // or a loading spinner
+  }
 
   return (
-    <NotificationProvider>
-      <div className="min-h-screen bg-slate-900 text-slate-100">
-        {/* Header */}
-        <DashboardHeader />
-        
-        {/* Main Dashboard Content */}
-        <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-          {/* Server Configuration */}
-          <ServerConfig />
-          
-          {/* Servers List */}
-          <ServersList />
-          
-          {/* Control Panel */}
-          <ControlPanel />
-          
-          {/* Progress Bar (only shows during scanning) */}
-          <ProgressBar />
-          
-          {/* Statistics Cards */}
-          <StatsCards />
-          
-          {/* Activity Log */}
-          <ActivityLog />
-        </main>
-        
-        {/* Footer */}
-        <footer className="bg-dark-darker border-t border-slate-700 py-8 mt-16">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="text-center text-slate-400">
-              <p className="mb-2">
-                Desarrollado con ❤️ para <strong className="text-primary-400">Ingenio Pichichi S.A.</strong>
-              </p>
-              <p className="text-sm">
-                Studio1 - Constructor IPTV Pro Multi-Servidor v2.0 | 
-                Sistema Inteligente con Next.js + Firebase + Genkit
-              </p>
-              <div className="flex items-center justify-center gap-4 mt-4 text-xs">
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                  Sistema Activo
-                </span>
-                <span>•</span>
-                <span>Manejo Error 512 ✅</span>
-                <span>•</span>
-                <span>IA Integrada 🤖</span>
-                <span>•</span>
-                <span>40K+ Canales Soportados 📺</span>
-              </div>
-            </div>
+    <div className="bg-background text-foreground min-h-screen">
+      <Header />
+      <main className="container mx-auto p-4 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <StatsDashboard {...stats} />
+            <ServerConfig onAddServer={handleAddServer} />
+            <ServerList
+              servers={servers}
+              onScanServer={(id) => startScan([id])}
+              onDeleteServer={deleteServer}
+              isScanning={isScanning}
+            />
+            <ControlPanel
+              onScanAll={handleScanAll}
+              onClearAll={clearAllServers}
+              isScanning={isScanning}
+            />
           </div>
-        </footer>
-      </div>
-    </NotificationProvider>
+          <div className="space-y-6">
+            <ProgressOverview
+              progress={progress.percentage}
+              eta={etaString}
+              memoryUsage={Math.round(performance.memory?.usedJSHeapSize / 1024 / 1024) || 25}
+              totalChannels={progress.channelsFound}
+            />
+            <ChannelExporter channelCount={totalChannels} />
+            <AiOptimizer />
+          </div>
+        </div>
+        <ActivityLogs logs={logs} onClearLog={clearLogs} />
+      </main>
+      <Toaster />
+    </div>
   );
 }

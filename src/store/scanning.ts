@@ -38,31 +38,26 @@ const initialState = {
 
 const pollForProgress = (scanId: string) => {
   const { addLog } = useLogsStore.getState();
-  const { updateProgress, addResult, reset } = useScanningStore.getState();
-  const { updateServer } = useServersStore.getState();
+  const { updateProgress, reset } = useScanningStore.getState();
+  const { updateServer, refreshStats } = useServersStore.getState();
 
   const intervalId = setInterval(async () => {
     try {
+      if (!useScanningStore.getState().isScanning) {
+        clearInterval(intervalId);
+        return;
+      }
+      
       const response = await fetch(`/api/iptv/scan-status?scanId=${scanId}`);
       if (!response.ok) {
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         if (data.code === 'NOT_FOUND') {
-            addLog(`Scan ${scanId} completed. Fetching final results...`, 'success');
-            // Final poll to get last data
-            const finalResponse = await fetch(`/api/iptv/scan-status?scanId=${scanId}`);
-            if (finalResponse.ok) {
-              const { data: finalData } = await finalResponse.json();
-              updateProgress(finalData.progress);
-              finalData.results.forEach((result: ScanResult) => {
-                updateServer(result.serverId, { 
-                  status: result.success ? 'completed' : 'error',
-                  totalChannels: result.channels,
-                  lastScan: new Date().toLocaleString()
-                });
-              });
-            }
+            addLog(`[${scanId}] Scan finalized.`, 'success');
             clearInterval(intervalId);
-            useScanningStore.getState().reset();
+            setTimeout(() => {
+                reset();
+                refreshStats();
+            }, 3000);
         }
         return;
       }
@@ -70,10 +65,10 @@ const pollForProgress = (scanId: string) => {
       const { data } = await response.json();
       updateProgress(data.progress);
       
-      // Update server statuses based on results
+      // Update server statuses and channel counts based on results
       data.results.forEach((result: ScanResult) => {
         const server = useServersStore.getState().servers.find(s => s.id === result.serverId);
-        if (server && server.status === 'scanning') {
+        if (server && (server.status === 'scanning' || server.status === 'idle')) {
             updateServer(result.serverId, { 
                 status: result.success ? 'completed' : 'error',
                 totalChannels: result.channels,
@@ -83,16 +78,19 @@ const pollForProgress = (scanId: string) => {
       });
 
       if (data.isComplete) {
-        addLog(`Scan ${scanId} finalized.`, 'success');
+        addLog(`[${scanId}] Scan complete signal received.`, 'info');
         clearInterval(intervalId);
-        setTimeout(() => useScanningStore.getState().reset(), 5000); // Keep final results for a bit
+        setTimeout(() => {
+            reset();
+            refreshStats(); // Final stats refresh
+        }, 5000);
       }
     } catch (error) {
       addLog(`Error polling for scan progress: ${(error as Error).message}`, 'error');
       clearInterval(intervalId);
       reset();
     }
-  }, 2000); // Poll every 2 seconds
+  }, 2000);
 
   return intervalId;
 };
@@ -105,12 +103,12 @@ export const useScanningStore = create<ScanningState>()((set, get) => ({
 
     const state = get();
     if (state.isScanning) {
-        addLog('Ya hay un escaneo en progreso.', 'warning');
-        throw new Error('Ya hay un escaneo en progreso');
+        addLog('A scan is already in progress.', 'warning');
+        throw new Error('A scan is already in progress.');
     }
     if (serverIds.length === 0) {
-        addLog('Debe seleccionar al menos un servidor para escanear.', 'warning');
-        throw new Error('Debe seleccionar al menos un servidor');
+        addLog('At least one server must be selected to scan.', 'warning');
+        throw new Error('At least one server must be selected');
     }
 
     const abortController = new AbortController();
@@ -137,13 +135,13 @@ export const useScanningStore = create<ScanningState>()((set, get) => ({
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Error iniciando escaneo' }));
+        const errorData = await response.json().catch(() => ({ error: 'Error initiating scan' }));
         throw new Error(errorData.error);
       }
       
       const result = await response.json();
       set({ scanId: result.scanId });
-      addLog(`[${result.scanId}] Escaneo masivo iniciado para ${result.serversCount} servidor(es).`, 'info');
+      addLog(`[${result.scanId}] Mass scan initiated for ${result.serversCount} server(s).`, 'info');
 
       // Start polling
       const pollingInterval = pollForProgress(result.scanId);
@@ -151,9 +149,9 @@ export const useScanningStore = create<ScanningState>()((set, get) => ({
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        addLog(`Petición de inicio de escaneo cancelada.`, 'warning');
+        addLog(`Scan initiation request cancelled.`, 'warning');
       } else {
-        addLog(`Error al iniciar el escaneo masivo: ${error.message}`, 'error');
+        addLog(`Error initiating mass scan: ${error.message}`, 'error');
         get().reset();
         throw error;
       }
@@ -164,7 +162,7 @@ export const useScanningStore = create<ScanningState>()((set, get) => ({
     const { addLog } = useLogsStore.getState();
     if (!state.isScanning || !state.scanId) return;
 
-    addLog(`[${state.scanId}] Solicitando cancelación de escaneo...`, 'warning');
+    addLog(`[${state.scanId}] Requesting scan cancellation...`, 'warning');
     
     if (state.pollingInterval) {
         clearInterval(state.pollingInterval);
@@ -175,9 +173,9 @@ export const useScanningStore = create<ScanningState>()((set, get) => ({
             method: 'DELETE',
         });
         state.abortController?.abort();
-        addLog(`[${state.scanId}] Escaneo cancelado.`, 'success');
+        addLog(`[${state.scanId}] Scan cancelled.`, 'success');
     } catch(err) {
-        addLog(`Error al cancelar escaneo: ${(err as Error).message}`, 'error');
+        addLog(`Error cancelling scan: ${(err as Error).message}`, 'error');
     } finally {
         get().reset();
     }
@@ -194,7 +192,7 @@ export const useScanningStore = create<ScanningState>()((set, get) => ({
     if (state.pollingInterval) {
         clearInterval(state.pollingInterval);
     }
-    // Set all servers that are stuck in "scanning" to "idle"
+    
     useServersStore.getState().servers.forEach(server => {
         if(server.status === 'scanning') {
             useServersStore.getState().updateServer(server.id, { status: 'idle' });
