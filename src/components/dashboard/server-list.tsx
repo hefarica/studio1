@@ -21,7 +21,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Server as ServerIcon, Trash2, Search, Loader, Circle, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Server as ServerIcon, Trash2, Search, Loader, Circle, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import type { Server, ServerStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -33,11 +33,13 @@ type ServerListProps = {
 };
 
 const statusConfig: Record<ServerStatus, { icon: React.ElementType, color: string, label: string }> = {
-    Online: { icon: CheckCircle, color: 'text-green-500', label: 'Online' },
-    Offline: { icon: AlertTriangle, color: 'text-gray-500', label: 'Offline' },
-    Scanning: { icon: Loader, color: 'text-blue-500 animate-spin', label: 'Scanning' },
-    Error: { icon: AlertTriangle, color: 'text-red-500', label: 'Error' }
-}
+    idle: { icon: Circle, color: 'text-gray-500', label: 'Idle' },
+    scanning: { icon: Loader, color: 'text-blue-500 animate-spin', label: 'Scanning' },
+    connected: { icon: CheckCircle, color: 'text-green-500', label: 'Connected' },
+    completed: { icon: CheckCircle, color: 'text-green-500', label: 'Completed' },
+    error: { icon: AlertTriangle, color: 'text-red-500', label: 'Error' },
+    retrying: { icon: RefreshCw, color: 'text-yellow-500 animate-spin', label: 'Retrying' }
+};
 
 export function ServerList({ servers, onScanServer, onDeleteServer, isScanning }: ServerListProps) {
   return (
@@ -49,8 +51,9 @@ export function ServerList({ servers, onScanServer, onDeleteServer, isScanning }
       <CardContent>
         <div className="space-y-4">
           {servers.map(server => {
-             const StatusIcon = statusConfig[server.status].icon;
-             const statusColor = statusConfig[server.status].color;
+             const config = statusConfig[server.status] || statusConfig.idle;
+             const StatusIcon = config.icon;
+             const statusColor = config.color;
 
              return (
               <div key={server.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
@@ -61,7 +64,7 @@ export function ServerList({ servers, onScanServer, onDeleteServer, isScanning }
                   </div>
                   <p className="text-sm text-muted-foreground">{server.url}</p>
                   <p className="text-xs text-muted-foreground">
-                    <span className="font-medium">{server.activeChannels?.toLocaleString('en-US')}</span> channels | Last scan: {server.lastScan}
+                    <span className="font-medium">{server.totalChannels?.toLocaleString('en-US')}</span> channels | Last scan: {server.lastScan || 'N/A'}
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
@@ -75,7 +78,7 @@ export function ServerList({ servers, onScanServer, onDeleteServer, isScanning }
                           disabled={isScanning}
                           aria-label={`Scan ${server.name}`}
                         >
-                          {isScanning && server.status === 'Scanning' ? <Loader className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+                          {isScanning && server.status === 'scanning' ? <Loader className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Scan Server</TooltipContent>
