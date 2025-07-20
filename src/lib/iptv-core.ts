@@ -50,8 +50,15 @@ export class IPTVCore {
       });
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to parse scan error response' }));
-        throw new Error(errorData.error || `Scan API error! status: ${response.status}`);
+        let errorText = `Scan API error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorText = errorData.error || errorText;
+        } catch (e) {
+          // If parsing as JSON fails, use the response text as is.
+          errorText = await response.text();
+        }
+        throw new Error(errorText);
       }
 
       const result = await response.json();
