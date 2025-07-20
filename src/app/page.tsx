@@ -10,7 +10,7 @@ import { ServerConfig } from '@/components/dashboard/server-config';
 import { ControlPanel } from '@/components/dashboard/control-panel';
 import { ProgressOverview } from '@/components/dashboard/progress-overview';
 import { AiOptimizer } from '@/components/dashboard/ai-optimizer';
-import { StreamAnalyzer } from '@/components/dashboard/stream-analyzer';
+import { ChannelExporter } from '@/components/dashboard/channel-exporter';
 
 const initialServers: Server[] = [
   { 
@@ -56,10 +56,10 @@ export default function DashboardPage() {
 
     setIsScanning(true);
     setScanProgress(0);
-    setTotalChannelsFound(0); // Reiniciar el contador global
     addLog('[INFO] Iniciando escaneo de todos los servidores...', 'info');
 
-    // Reiniciar canales de cada servidor antes de escanear
+    // Reiniciar canales de cada servidor y el contador global antes de escanear
+    setTotalChannelsFound(0);
     setServers(prevServers => prevServers.map(s => ({ ...s, activeChannels: 0, status: 'Scanning' })));
 
     const totalDuration = 5 * 60 * 1000;
@@ -182,7 +182,7 @@ export default function DashboardPage() {
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <AiOptimizer />
-          <StreamAnalyzer />
+          <ChannelExporter channelCount={totalChannelsFound} />
         </div>
 
         <StatsDashboard 
