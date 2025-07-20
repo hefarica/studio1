@@ -1,5 +1,6 @@
-
 import { CONFIG } from './constants';
+import type { IPTVServer } from '@/types/iptv';
+
 
 export interface IPTVError {
   code: string;
@@ -46,6 +47,30 @@ export class IPTVErrorHandler {
   static analyzeError(error: Error | string, context?: { serverName?: string; url?: string }): IPTVError {
     const errorMessage = typeof error === 'string' ? error : error.message;
     const lowerMessage = errorMessage.toLowerCase();
+
+    if (lowerMessage.includes('error desconocido') || 
+        lowerMessage.includes('unknown.*error') ||
+        lowerMessage.includes('connection.*failed') ||
+        lowerMessage.includes('todos los métodos.*fallaron')) {
+      
+      return {
+        code: 'UNKNOWN_CONNECTION_ERROR',
+        message: 'Error de conectividad con el servidor IPTV',
+        originalError: errorMessage,
+        suggestions: [
+          'Verificar que la URL del servidor sea correcta y esté activa',
+          'Confirmar que las credenciales (usuario/contraseña) sean válidas',
+          'Comprobar que el servidor IPTV esté online y funcional',
+          'Verificar la conectividad a internet',
+          'El servidor podría estar bloqueando requests automáticos',
+          'Probar con un navegador diferente o modo incógnito',
+          'Contactar al proveedor IPTV para verificar el estado del servicio'
+        ],
+        isRetryable: true,
+        retryAfter: 10000, // 10 segundos
+        severity: 'high'
+      };
+    }
 
     // Análisis de patrones de error
     if (this.ERROR_PATTERNS.SERVER_512.test(lowerMessage)) {
@@ -259,5 +284,76 @@ export class IPTVErrorHandler {
     };
     
     return colorMap[severity];
+  }
+  
+  static async diagnoseConnection(server: IPTVServer): Promise<{
+    canReachUrl: boolean;
+    canResolveHost: boolean;
+    responseTime: number;
+    suggestions: string[];
+  }> {
+    console.log(`🩺 [DIAGNOSE] Diagnosticando conexión a ${server.name}`);
+    
+    const startTime = Date.now();
+    let canReachUrl = false;
+    let canResolveHost = false;
+    const suggestions: string[] = [];
+
+    try {
+      // Test básico de conectividad
+      const testUrl = new URL(server.url);
+      console.log(`🔍 [DIAGNOSE] Host: ${testUrl.hostname}, Puerto: ${testUrl.port || 80}`);
+      
+      try {
+        const basicTest = await fetch(server.url, {
+          method: 'HEAD',
+          mode: 'no-cors', // Para evitar CORS en test básico
+          signal: AbortSignal.timeout(5000)
+        });
+        
+        canReachUrl = true;
+        console.log(`✅ [DIAGNOSE] URL es alcanzable`);
+        
+      } catch (reachError: any) {
+        console.log(`❌ [DIAGNOSE] URL no alcanzable: ${reachError.message}`);
+        
+        if (reachError.message.includes('CORS')) {
+          suggestions.push('Servidor requiere proxy CORS (normal para IPTV)');
+          canResolveHost = true; // CORS significa que el host existe
+        } else if (reachError.message.includes('timeout')) {
+          suggestions.push('Timeout de conexión - servidor lento o inaccesible');
+        } else if (reachError.message.includes('network')) {
+          suggestions.push('Error de red - verificar conectividad a internet');
+        }
+      }
+
+      // Test de resolución DNS
+      try {
+        const dnsTest = await fetch(`https://dns.google/resolve?name=${testUrl.hostname}&type=A`);
+        if (dnsTest.ok) {
+          canResolveHost = true;
+          console.log(`✅ [DIAGNOSE] Host DNS resuelve correctamente`);
+        }
+      } catch (dnsError) {
+        console.log(`⚠️ [DIAGNOSE] No se pudo verificar DNS`);
+        suggestions.push('Posible problema de resolución DNS');
+      }
+
+    } catch (error: any) {
+      console.log(`❌ [DIAGNOSE] Error en diagnóstico: ${error.message}`);
+      suggestions.push('Error general en diagnóstico de red');
+    }
+
+    const responseTime = Date.now() - startTime;
+    
+    const diagnosis = {
+      canReachUrl,
+      canResolveHost,
+      responseTime,
+      suggestions
+    };
+    
+    console.log(`🩺 [DIAGNOSE] Resultado:`, diagnosis);
+    return diagnosis;
   }
 }
