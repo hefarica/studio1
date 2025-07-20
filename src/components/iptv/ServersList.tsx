@@ -10,12 +10,14 @@ import { useLogsStore } from '@/store/logs';
 import { IPTVCore } from '@/lib/iptv-core';
 import type { IPTVServer, ConnectionStatus } from '@/lib/types';
 import { clsx } from 'clsx';
+import { useScanningStore } from '@/store/scanning';
 
 export const ServersList: React.FC = () => {
   const { servers, removeServer, updateServer } = useServersStore();
   const { success, error, warning } = useNotifications();
   const { addLog } = useLogsStore();
   
+  const { startScan: startMassScan, isScanning } = useScanningStore();
   const [connectionStates, setConnectionStates] = useState<Record<string, ConnectionStatus>>({});
   const [iptvCore] = useState(() => new IPTVCore());
 
@@ -75,39 +77,23 @@ export const ServersList: React.FC = () => {
   }, [iptvCore, connectionStates, updateServer, addLog, success, error, warning, updateConnectionState]);
 
   const startServerScan = useCallback(async (server: IPTVServer) => {
-    if (connectionStates[server.id]?.isScanning) {
-        warning('Escaneo en progreso', `Ya se está escaneando ${server.name}`);
-        return;
+    if (isScanning) {
+      warning('Escaneo en progreso', `Ya hay otro escaneo ejecutándose.`);
+      return;
     }
-
-    updateConnectionState(server.id, { isScanning: true });
-    updateServer(server.id, { status: 'scanning' });
-    addLog(`🚀 Iniciando escaneo completo de ${server.name}`, 'info', { serverId: server.id });
-    
+  
+    addLog(`🚀 Iniciando escaneo de ${server.name}`, 'info', { serverId: server.id });
     try {
-      const result = await iptvCore.scanServer(server);
-      if (result.success) {
-        updateServer(server.id, {
-          status: 'completed',
-          totalChannels: result.results.totalChannels,
-          channels: result.results.totalChannels, // legacy support
-          lastScan: new Date().toLocaleString(),
-          updatedAt: new Date()
-        });
-        success('Escaneo completado', `${server.name}: ${result.results.totalChannels.toLocaleString()} canales encontrados.`);
-        addLog(`🎉 ${server.name}: Escaneo completado - ${result.results.totalChannels} canales`, 'success', { serverId: server.id });
-      } else {
-        throw new Error(result.error || 'El escaneo del servidor falló');
-      }
+      // Use the asynchronous scanning mechanism
+      await startMassScan([server.id]);
+      updateServer(server.id, { status: 'scanning' });
+      success('Escaneo iniciado', `El escaneo para ${server.name} ha comenzado en segundo plano.`);
     } catch (err: any) {
-      updateServer(server.id, { status: 'error' });
       const errorMessage = err.message || 'Error de escaneo desconocido';
-      error('Error de escaneo', `${server.name}: ${errorMessage}`);
-      addLog(`💥 ${server.name}: Error en escaneo - ${errorMessage}`, 'error', { serverId: server.id });
-    } finally {
-        updateConnectionState(server.id, { isScanning: false });
+      error('Error al iniciar escaneo', `${server.name}: ${errorMessage}`);
+      addLog(`💥 ${server.name}: Error iniciando escaneo - ${errorMessage}`, 'error', { serverId: server.id });
     }
-  }, [iptvCore, connectionStates, addLog, error, success, updateServer, updateConnectionState]);
+  }, [isScanning, addLog, startMassScan, success, error, updateServer]);
 
   const handleRemoveServer = (server: IPTVServer) => {
     if (confirm(`¿Estás seguro de eliminar "${server.name}"?`)) {
@@ -121,12 +107,11 @@ export const ServersList: React.FC = () => {
     const connectionState = connectionStates[server.id];
     
     if (connectionState?.isConnecting) return { icon: '🔄', text: `Conectando...`, color: 'text-amber-400', bgColor: 'bg-amber-900/20 border-amber-500/30' };
-    if (connectionState?.isScanning) return { icon: '📡', text: `Escaneando...`, color: 'text-blue-400', bgColor: 'bg-blue-900/20 border-blue-500/30' };
+    if (server.status === 'scanning') return { icon: '📡', text: `Escaneando...`, color: 'text-blue-400', bgColor: 'bg-blue-900/20 border-blue-500/30' };
 
     switch (server.status) {
       case 'connected': return { icon: '✅', text: `Conectado`, color: 'text-emerald-400', bgColor: 'bg-emerald-900/20 border-emerald-500/30' };
-      case 'scanning': return { icon: '🔍', text: 'Escaneando...', color: 'text-blue-400', bgColor: 'bg-blue-900/20 border-blue-500/30' };
-      case 'completed': return { icon: '🎯', text: `Completado - ${server.totalChannels.toLocaleString()} canales`, color: 'text-purple-400', bgColor: 'bg-purple-900/20 border-purple-500/30' };
+      case 'completed': return { icon: '🎯', text: `Completado - ${(server.totalChannels || 0).toLocaleString()} canales`, color: 'text-purple-400', bgColor: 'bg-purple-900/20 border-purple-500/30' };
       case 'error': return { icon: '❌', text: 'Error', color: 'text-error-400', bgColor: 'bg-error-900/20 border-error-500/30' };
       default: return { icon: '⚪', text: 'Sin probar', color: 'text-slate-400', bgColor: 'bg-slate-800/50 border-slate-600/30' };
     }
@@ -159,12 +144,12 @@ export const ServersList: React.FC = () => {
         {servers.map((server) => {
           const status = getStatusDisplay(server);
           const connectionState = connectionStates[server.id];
-          const isBusy = connectionState?.isConnecting || connectionState?.isScanning;
+          const isBusy = connectionState?.isConnecting || isScanning;
           
           return (
             <div
               key={server.id}
-              className={clsx('rounded-lg border p-5 transition-all duration-300', 'hover:shadow-lg hover:translate-x-1', status.bgColor, isBusy && 'animate-pulse-slow')}
+              className={clsx('rounded-lg border p-5 transition-all duration-300', 'hover:shadow-lg hover:translate-x-1', status.bgColor, isBusy && server.status === 'scanning' && 'animate-pulse-slow')}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
@@ -176,7 +161,7 @@ export const ServersList: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {isBusy && <Loading size="sm" variant="spinner" />}
+                  {connectionState?.isConnecting && <Loading size="sm" variant="spinner" />}
                   <Button size="sm" variant="info" onClick={() => testServerConnection(server)} disabled={isBusy} icon="🔗">Probar</Button>
                   <Button size="sm" variant="secondary" onClick={() => startServerScan(server)} disabled={isBusy} icon="📡">Escanear</Button>
                   <Button size="sm" variant="danger" onClick={() => handleRemoveServer(server)} disabled={isBusy} icon="🗑️">Eliminar</Button>
