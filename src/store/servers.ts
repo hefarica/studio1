@@ -10,6 +10,7 @@ interface ServersState {
   loading: boolean;
   error: string | null;
   lastUpdated: string | null;
+  cacheSize: number; // Added cacheSize to the state
   actions: {
     loadInitialServers: () => void;
     addServer: (serverData: Omit<Server, 'id' | 'status' | 'activeChannels' | 'lastScan'>) => void;
@@ -18,6 +19,7 @@ interface ServersState {
     clearServers: () => void;
     setLoading: (loading: boolean) => void;
     setError: (error: string | null) => void;
+    calculateCacheSize: () => void;
   };
 }
 
@@ -41,6 +43,7 @@ export const useServersStore = create<ServersState>()(
       loading: false,
       error: null,
       lastUpdated: null,
+      cacheSize: 0,
       actions: {
         loadInitialServers: () => {
             if (get().servers.length === 0) {
@@ -48,15 +51,16 @@ export const useServersStore = create<ServersState>()(
                     servers: initialServers,
                 });
             }
+            get().actions.calculateCacheSize();
         },
         addServer: (serverData) => {
           if (!serverData.name?.trim()) throw new Error('El nombre del servidor es requerido');
           if (!serverData.url?.trim()) throw new Error('La URL del servidor es requerida');
           if (!CONFIG.VALIDATION.URL_REGEX.test(serverData.url)) throw new Error('La URL debe comenzar con http:// o https://');
-          if (!serverData.username?.trim()) throw new Error('El usuario es requerido');
+          if (!serverData.user?.trim()) throw new Error('El usuario es requerido');
           if (!serverData.password?.trim()) throw new Error('La contraseña es requerida');
 
-          const existingServer = get().servers.find(s => s.url === serverData.url && s.username === serverData.username);
+          const existingServer = get().servers.find(s => s.url === serverData.url && s.user === serverData.user);
           if (existingServer) throw new Error('Este servidor ya está configurado');
 
           const newServer: Server = {
@@ -70,12 +74,14 @@ export const useServersStore = create<ServersState>()(
               servers: [...state.servers, newServer],
               lastUpdated: new Date().toISOString(),
            }));
+           get().actions.calculateCacheSize();
         },
         deleteServer: (serverId) => {
           set((state) => ({
             servers: state.servers.filter((s) => s.id !== serverId),
             lastUpdated: new Date().toISOString(),
           }));
+          get().actions.calculateCacheSize();
         },
         updateServer: (serverId, updates) => {
           set((state) => ({
@@ -84,18 +90,33 @@ export const useServersStore = create<ServersState>()(
             ),
             lastUpdated: new Date().toISOString(),
           }));
+          get().actions.calculateCacheSize();
         },
         clearServers: () => {
           set({ servers: [], lastUpdated: new Date().toISOString() });
+          get().actions.calculateCacheSize();
         },
         setLoading: (loading) => set({ loading }),
         setError: (error) => set({ error }),
+        calculateCacheSize: () => {
+            try {
+                const servers = get().servers;
+                const sizeInBytes = new TextEncoder().encode(JSON.stringify(servers)).length;
+                const sizeInMB = sizeInBytes / (1024 * 1024);
+                set({ cacheSize: sizeInMB });
+            } catch (e) {
+                set({ cacheSize: 0 });
+            }
+        }
       },
     }),
     {
       name: CONFIG.STORAGE_PREFIX + 'servers',
       version: 2,
       partialize: (state) => ({ servers: state.servers }),
+       onRehydrateStorage: () => (state) => {
+        state?.actions.calculateCacheSize();
+      },
     }
   )
 );
