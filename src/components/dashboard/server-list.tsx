@@ -19,15 +19,17 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Server as ServerIcon, Trash2, Search } from 'lucide-react';
+import { Server as ServerIcon, Trash2, Search, Loader } from 'lucide-react';
 import type { Server } from '@/lib/types';
 
 type ServerListProps = {
   servers: Server[];
+  onScanServer: (id: string) => void;
   onDeleteServer: (id: string) => void;
+  isScanning: boolean;
 };
 
-export function ServerList({ servers, onDeleteServer }: ServerListProps) {
+export function ServerList({ servers, onScanServer, onDeleteServer, isScanning }: ServerListProps) {
   return (
     <Card className="bg-card shadow-lg rounded-lg">
       <CardHeader className="flex flex-row items-center justify-between">
@@ -51,12 +53,18 @@ export function ServerList({ servers, onDeleteServer }: ServerListProps) {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="text-primary hover:bg-primary/10 hover:text-primary/80">
-                  <Search className="h-5 w-5" />
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="text-primary hover:bg-primary/10 hover:text-primary/80"
+                  onClick={() => onScanServer(server.id)}
+                  disabled={isScanning}
+                >
+                  {isScanning && server.status === 'Scanning' ? <Loader className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
                 </Button>
                  <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 hover:text-destructive/80">
+                      <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 hover:text-destructive/80" disabled={isScanning}>
                         <Trash2 className="h-5 w-5" />
                       </Button>
                     </AlertDialogTrigger>

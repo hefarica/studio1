@@ -18,7 +18,7 @@ const initialServers: Server[] = [
     name: 'EVESTV IP TV', 
     url: 'http://126954339934.d4ktv.info:80', 
     status: 'Online', 
-    activeChannels: 0,
+    activeChannels: 759,
     user: 'uqb3fbu3b',
     lastScan: 'Nunca',
   },
@@ -51,20 +51,12 @@ export default function DashboardPage() {
     setLogs(prev => [{ id: newLogId, timestamp: timestamp, message: formattedMessage, level }, ...prev].slice(0, 100));
   }, []);
 
-  const handleScanAll = () => {
-    if (isScanning || servers.length === 0) return;
-
+  const runScanSimulation = (onComplete: (channelsFound: number) => void, totalChannelsToFind: number = 40127) => {
     setIsScanning(true);
     setScanProgress(0);
-    addLog('[INFO] Iniciando escaneo de todos los servidores...', 'info');
 
-    // Reiniciar canales de cada servidor y el contador global antes de escanear
-    setTotalChannelsFound(0);
-    setServers(prevServers => prevServers.map(s => ({ ...s, activeChannels: 0, status: 'Scanning' })));
-
-    const totalDuration = 5 * 60 * 1000;
-    const totalChannelsToFind = 40127;
-    const intervalTime = 250; 
+    const totalDuration = 5 * 60 * 1000; // 5 minutos
+    const intervalTime = 250;
     const steps = totalDuration / intervalTime;
     let currentStep = 0;
     let channelsFoundSoFar = 0;
@@ -82,7 +74,7 @@ export default function DashboardPage() {
       
       const newChannelsThisStep = Math.floor(Math.random() * (totalChannelsToFind / steps) * 2);
       channelsFoundSoFar += newChannelsThisStep;
-      setTotalChannelsFound(Math.min(channelsFoundSoFar, totalChannelsToFind));
+      setTotalChannelsFound(prevTotal => prevTotal + newChannelsThisStep);
       setMemoryUsage(150 + Math.floor(Math.random() * 50)); 
 
       if (currentStep % 20 === 0) {
@@ -93,38 +85,82 @@ export default function DashboardPage() {
         clearInterval(scanInterval);
         setIsScanning(false);
         setEta('00:00:00');
-        setTotalChannelsFound(totalChannelsToFind);
-        addLog(`[SUCCESS] Escaneo completado. Total de canales encontrados: ${totalChannelsToFind.toLocaleString()}`, 'success');
-        
-        const scanDate = new Date().toLocaleString('es-ES');
-        setServers(prevServers => prevServers.map(s => ({
-          ...s,
-          activeChannels: Math.floor(totalChannelsToFind / prevServers.length),
-          lastScan: scanDate,
-          status: 'Online'
-        })));
+        onComplete(totalChannelsToFind);
         setCacheSize(prev => prev + (Math.random() * 5));
       }
     }, intervalTime);
   };
 
+
+  const handleScanServer = (serverId: string) => {
+    if (isScanning) return;
+    const serverToScan = servers.find(s => s.id === serverId);
+    if (!serverToScan) return;
+
+    addLog(`[INFO] Iniciando escaneo del servidor: ${serverToScan.name}...`, 'info');
+
+    // Reset channels for the specific server and update total
+    setTotalChannelsFound(prev => prev - (serverToScan.activeChannels || 0));
+    setServers(prevServers => prevServers.map(s => 
+      s.id === serverId ? { ...s, activeChannels: 0, status: 'Scanning' } : s
+    ));
+
+    const channelsPerServer = Math.floor(40127 / servers.length) || 40127;
+
+    runScanSimulation((channelsFound) => {
+      addLog(`[SUCCESS] Escaneo de ${serverToScan.name} completado. Total de canales encontrados: ${channelsFound.toLocaleString()}`, 'success');
+      const scanDate = new Date().toLocaleString('es-ES');
+      setServers(prevServers => prevServers.map(s =>
+        s.id === serverId 
+          ? { ...s, activeChannels: channelsFound, lastScan: scanDate, status: 'Online' } 
+          : s
+      ));
+    }, channelsPerServer);
+  };
+
+
+  const handleScanAll = () => {
+    if (isScanning || servers.length === 0) return;
+
+    addLog('[INFO] Iniciando escaneo de todos los servidores...', 'info');
+
+    // Reiniciar canales de cada servidor y el contador global antes de escanear
+    setTotalChannelsFound(0);
+    setServers(prevServers => prevServers.map(s => ({ ...s, activeChannels: 0, status: 'Scanning' })));
+    
+    runScanSimulation((totalChannelsToFind) => {
+        addLog(`[SUCCESS] Escaneo completado. Total de canales encontrados: ${totalChannelsToFind.toLocaleString()}`, 'success');
+        const scanDate = new Date().toLocaleString('es-ES');
+        const channelsPerServer = Math.floor(totalChannelsToFind / servers.length) || 0;
+        setServers(prevServers => prevServers.map(s => ({
+          ...s,
+          activeChannels: channelsPerServer,
+          lastScan: scanDate,
+          status: 'Online'
+        })));
+        // Ensure the final count is accurate
+        setTotalChannelsFound(totalChannelsToFind);
+    });
+  };
+
   const addServer = (server: Omit<Server, 'id' | 'status' | 'activeChannels' | 'lastScan'>) => {
     const newServer: Server = {
       ...server,
-      id: (servers.length + 1).toString(),
+      id: `server_${Date.now()}`,
       status: 'Online',
       activeChannels: 0,
-      lastScan: new Date().toLocaleString('es-ES'),
+      lastScan: 'Nunca',
     };
     setServers(prev => [...prev, newServer]);
     addLog(`[INFO] Servidor agregado: ${server.name}`, 'info');
   };
 
   const deleteServer = (id: string) => {
-    const serverName = servers.find(s => s.id === id)?.name;
-    setServers(prev => prev.filter(s => s.id !== id));
-    if (serverName) {
-      addLog(`[WARN] Servidor eliminado: ${serverName}`, 'warning');
+    const serverToDelete = servers.find(s => s.id === id);
+    if (serverToDelete) {
+      setTotalChannelsFound(prev => prev - (serverToDelete.activeChannels || 0));
+      setServers(prev => prev.filter(s => s.id !== id));
+      addLog(`[WARN] Servidor eliminado: ${serverToDelete.name}`, 'warning');
     }
   };
   
@@ -147,6 +183,7 @@ export default function DashboardPage() {
 
   const handleClearAll = () => {
     setServers([]);
+    setTotalChannelsFound(0);
     addLog('[INFO] Todos los servidores han sido eliminados.', 'info');
   }
 
@@ -162,7 +199,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
              <ServerConfig onAddServer={addServer} />
-             <ServerList servers={servers} onDeleteServer={deleteServer} />
+             <ServerList servers={servers} onScanServer={handleScanServer} onDeleteServer={deleteServer} isScanning={isScanning} />
           </div>
           <div className="lg:col-span-1 space-y-6">
             <ProgressOverview 
