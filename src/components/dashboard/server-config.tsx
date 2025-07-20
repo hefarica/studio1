@@ -42,6 +42,12 @@ export function ServerConfig({ onAddServer }: ServerConfigProps) {
     onAddServer(values);
   }
 
+  // Placeholder function for testing connections
+  const handleTestConnections = () => {
+    alert('Funcionalidad de prueba de conexión pendiente de implementación.');
+    // In a real scenario, this would trigger a check for each server.
+  };
+
   return (
     <Card className="bg-card shadow-lg rounded-lg">
       <CardHeader>
@@ -104,7 +110,7 @@ export function ServerConfig({ onAddServer }: ServerConfigProps) {
                     <Plus className="mr-2 h-4 w-4"/>
                     Agregar Servidor
                 </Button>
-                <Button type="button" variant="secondary">
+                <Button type="button" variant="secondary" onClick={handleTestConnections}>
                     <TestTubeDiagonal className="mr-2 h-4 w-4"/>
                     Probar Conexiones
                 </Button>
