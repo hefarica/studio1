@@ -66,8 +66,9 @@ export const ServersList: React.FC = () => {
       }
     } catch (err: any) {
         updateServer(server.id, { status: 'error' });
-        error('Error crítico', `${server.name}: ${err.message}`);
-        addLog(`💥 ${server.name}: Error crítico - ${err.message}`, 'error', { serverId: server.id });
+        const errorMessage = err.message || 'Error crítico desconocido';
+        error('Error crítico', `${server.name}: ${errorMessage}`);
+        addLog(`💥 ${server.name}: Error crítico - ${errorMessage}`, 'error', { serverId: server.id });
     } finally {
         updateConnectionState(server.id, { isConnecting: false });
     }
@@ -93,15 +94,16 @@ export const ServersList: React.FC = () => {
           lastScan: new Date().toLocaleString(),
           updatedAt: new Date()
         });
-        success('Escaneo completado', `${server.name}: ${result.results.totalChannels} canales encontrados.`);
+        success('Escaneo completado', `${server.name}: ${result.results.totalChannels.toLocaleString()} canales encontrados.`);
         addLog(`🎉 ${server.name}: Escaneo completado - ${result.results.totalChannels} canales`, 'success', { serverId: server.id });
       } else {
         throw new Error(result.error || 'El escaneo del servidor falló');
       }
     } catch (err: any) {
       updateServer(server.id, { status: 'error' });
-      error('Error de escaneo', `${server.name}: ${err.message}`);
-      addLog(`💥 ${server.name}: Error en escaneo - ${err.message}`, 'error', { serverId: server.id });
+      const errorMessage = err.message || 'Error de escaneo desconocido';
+      error('Error de escaneo', `${server.name}: ${errorMessage}`);
+      addLog(`💥 ${server.name}: Error en escaneo - ${errorMessage}`, 'error', { serverId: server.id });
     } finally {
         updateConnectionState(server.id, { isScanning: false });
     }

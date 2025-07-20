@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { IPTVCore } from '@/lib/iptv-core';
 import { IPTVErrorHandler } from '@/lib/error-handler';
 import { IPTVServer } from '@/lib/types';
+import { safeJoin } from '@/lib/utils';
 
 // Zod schema for validating the server info response
 const ServerInfoResponseSchema = z.object({
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
         success: false,
         error: analyzedError.message,
         code: analyzedError.code,
-        suggestions: Array.isArray(analyzedError.suggestions) ? analyzedError.suggestions : [],
+        suggestions: safeJoin(analyzedError.suggestions, ', '),
         isRetryable: analyzedError.isRetryable,
         severity: analyzedError.severity,
         duration: Math.round(duration / 1000),

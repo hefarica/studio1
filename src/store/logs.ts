@@ -17,10 +17,15 @@ export const useLogsStore = create<LogsState>()((set, get) => ({
   logs: [],
   isAutoScroll: true,
   addLog: (rawMessage, level = 'info', meta = {}) => {
-    // 1) Normalize message: if it's an array, join it; otherwise, cast it to a string
-    const message = Array.isArray(rawMessage)
-      ? rawMessage.join(' ')
-      : String(rawMessage ?? '');
+    // 1) Normalize message: if it's an error object, get its message. If it's an array, join it. Otherwise, cast to string.
+    let message: string;
+    if (rawMessage instanceof Error) {
+      message = rawMessage.message;
+    } else if (Array.isArray(rawMessage)) {
+      message = rawMessage.join(' ');
+    } else {
+      message = String(rawMessage ?? '');
+    }
 
     const newLog: LogEntry = {
       id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
