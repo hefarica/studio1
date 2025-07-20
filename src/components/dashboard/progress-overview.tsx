@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { ScanProgress } from '@/lib/types';
 import { Zap, Clock, Tv, MemoryStick } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 const ChartTooltipContent = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -40,6 +40,12 @@ export function ProgressOverview({
   totalChannels,
 }: ScanProgress) {
   
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   const chartData = useMemo(() => [
     { name: 'Memory', usage: memoryUsage.toFixed(2) }
   ], [memoryUsage]);
@@ -71,7 +77,7 @@ export function ProgressOverview({
             <div className="bg-secondary/50 p-4 rounded-lg">
               <Tv className="h-6 w-6 mx-auto text-accent" />
               <p className="mt-2 text-sm text-muted-foreground">Active Channels</p>
-              <p className="font-bold text-lg">{totalChannels.toLocaleString()}</p>
+              <p className="font-bold text-lg">{isClient ? totalChannels.toLocaleString() : totalChannels}</p>
             </div>
             <div className="bg-secondary/50 p-4 rounded-lg col-span-2">
               <MemoryStick className="h-6 w-6 mx-auto text-accent" />

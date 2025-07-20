@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { getAiOptimization } from '@/app/actions';
 import type { AiOptimizationSuggestion, Server } from '@/lib/types';
-import { Bot, Wand2, Lightbulb, Server as ServerIcon, Clock, Cpu } from 'lucide-react';
+import { Bot, Wand2, Lightbulb, Server as ServerIcon, Clock, Cpu, Loader } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
 
 type AiOptimizerProps = {
