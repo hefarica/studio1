@@ -11,7 +11,7 @@ export class IPTVCore {
    * @param server The server configuration to test.
    * @returns A promise that resolves with the test result.
    */
-  async testServerConnection(server: IPTVServer) {
+  async testServerConnection(server: Omit<IPTVServer, 'id'>) {
     this.log(`[CORE] Testing connection for: ${server.name}`);
     try {
       const response = await fetch('/api/iptv/servers/test', {
@@ -26,7 +26,7 @@ export class IPTVCore {
       }
 
       const result = await response.json();
-      this.log(`[CORE] Test successful for ${server.name}: ${result.data.protocol}`, 'success');
+      this.log(`[CORE] Test successful for ${server.name}: ${result.data?.protocol}`, 'success');
       return result;
       
     } catch (error: any) {
@@ -50,21 +50,15 @@ export class IPTVCore {
       });
       
       if (!response.ok) {
-        // Read the response body only once as text.
         const errorText = await response.text();
         let errorMessage = `Scan API error! status: ${response.status}`;
-        try {
-          // Try to parse the text as JSON.
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.error || errorMessage;
-        } catch (e) {
-          // If parsing fails, it's likely HTML or plain text. Check if it's HTML.
-          if (errorText.trim().startsWith('<')) {
-            // It's HTML, so we just use the generic error message.
-          } else {
-             // It's some other text, use a snippet.
+        if (!errorText.trim().startsWith('<')) {
+           try {
+             const errorJson = JSON.parse(errorText);
+             errorMessage = errorJson.error || errorMessage;
+           } catch (e) {
              errorMessage = errorText.substring(0, 100);
-          }
+           }
         }
         throw new Error(errorMessage);
       }

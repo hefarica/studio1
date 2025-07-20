@@ -29,8 +29,8 @@ export const ServersList: React.FC = () => {
   }, []);
 
   const testServerConnection = useCallback(async (server: IPTVServer) => {
-    if (connectionStates[server.id]?.isConnecting) {
-      warning('Conexión en progreso', `Ya se está probando la conexión a ${server.name}`);
+    if (connectionStates[server.id]?.isConnecting || isScanning) {
+      warning('Operación no permitida', `Ya hay una prueba o escaneo en progreso.`);
       return;
     }
     
@@ -74,7 +74,7 @@ export const ServersList: React.FC = () => {
     } finally {
         updateConnectionState(server.id, { isConnecting: false });
     }
-  }, [iptvCore, connectionStates, updateServer, addLog, success, error, warning, updateConnectionState]);
+  }, [iptvCore, connectionStates, updateServer, addLog, success, error, warning, updateConnectionState, isScanning]);
 
   const startServerScan = useCallback(async (server: IPTVServer) => {
     if (isScanning) {
@@ -84,7 +84,6 @@ export const ServersList: React.FC = () => {
   
     addLog(`🚀 Iniciando escaneo de ${server.name}`, 'info', { serverId: server.id });
     try {
-      // Use the asynchronous scanning mechanism
       await startMassScan([server.id]);
       updateServer(server.id, { status: 'scanning' });
       success('Escaneo iniciado', `El escaneo para ${server.name} ha comenzado en segundo plano.`);

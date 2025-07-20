@@ -25,7 +25,7 @@ const ServerInfoResponseSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const serverData: IPTVServer = await request.json();
+    const serverData: Omit<IPTVServer, 'id'> = await request.json();
     
     const requiredFields = ['name', 'url', 'username', 'password'];
     const missingFields = requiredFields.filter(field => !(serverData as any)[field]?.trim());
