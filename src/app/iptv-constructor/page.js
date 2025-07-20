@@ -1,7 +1,8 @@
 import dynamic from 'next/dynamic';
 
 const IPTVConstructor = dynamic(() => import('@/components/iptv/IPTVConstructor'), {
-  ssr: false
+  ssr: false,
+  loading: () => <p className="text-center p-8">Cargando constructor...</p>
 });
 
 export default function IPTVConstructorPage() {

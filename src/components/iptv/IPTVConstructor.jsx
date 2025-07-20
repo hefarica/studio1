@@ -6,8 +6,10 @@ import ServersList from './ServersList';
 import StatsProDashboard from './StatsProDashboard';
 import ProgressContainer from './ProgressContainer';
 import ActivityLog from './ActivityLog';
+import { IPTVCore } from '@/lib/iptv-core';
 
 const IPTVConstructor = () => {
+  const [core, setCore] = useState(null);
   const [servers, setServers] = useState([]);
   const [scanning, setScanning] = useState(false);
   const [logs, setLogs] = useState([]);
@@ -25,55 +27,34 @@ const IPTVConstructor = () => {
     percentage: 0
   });
 
-  // Cargar servidores desde localStorage al montar
   useEffect(() => {
-    try {
-        const savedServers = localStorage.getItem('iptv_servers');
-        if (savedServers) {
-            const parsedServers = JSON.parse(savedServers);
-            setServers(parsedServers);
-            updateStats(parsedServers);
-        }
-    } catch (error) {
-        addLog('Error cargando servidores guardados', 'error');
-    }
-  }, []);
-
-  // Guardar servidores en localStorage
-  const saveServers = useCallback((updatedServers) => {
-    try {
-      localStorage.setItem('iptv_servers', JSON.stringify(updatedServers));
-      updateStats(updatedServers);
-    } catch (error) {
-      addLog('Error guardando servidores', 'error');
-    }
-  }, []);
-
-  // Actualizar estadísticas
-  const updateStats = useCallback((serversList) => {
-    const totalChannels = serversList.reduce((sum, server) => sum + (server.channels || 0), 0);
-    const cacheSize = calculateCacheSize(serversList);
+    // 1. Initialize core on client-side only
+    const iptv = new IPTVCore();
+    setCore(iptv);
     
-    setStats({
-      serversCount: serversList.length,
-      channelsCount: totalChannels,
-      lastScanTime: new Date().toLocaleTimeString(),
-      cacheSize
-    });
+    // Load servers from localStorage
+    const savedServers = localStorage.getItem('iptv_servers');
+    if (savedServers) {
+      try {
+        const parsedServers = JSON.parse(savedServers);
+        setServers(parsedServers);
+        updateStats(parsedServers);
+      } catch (error) {
+        iptv.addLog('Error cargando servidores guardados', 'error');
+      }
+    }
+    
+    // Attach event listeners from the core
+    const handleLog = (e) => addLog(e.detail.message, e.detail.level);
+    iptv.addEventListener('log', handleLog);
+    
+    return () => {
+      // Cleanup
+      iptv.removeEventListener('log', handleLog);
+      iptv.scanning = false;
+    };
   }, []);
 
-  // Calcular tamaño del cache
-  const calculateCacheSize = (serversList) => {
-    try {
-      const totalSize = JSON.stringify(serversList).length;
-      const sizeInMB = (totalSize / (1024 * 1024)).toFixed(1);
-      return `${sizeInMB} MB`;
-    } catch {
-      return '0.0 MB';
-    }
-  };
-
-  // Agregar log
   const addLog = useCallback((message, level = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     const newLog = {
@@ -84,40 +65,55 @@ const IPTVConstructor = () => {
     };
     
     setLogs(prevLogs => {
-      const updatedLogs = [newLog, ...prevLogs.slice(0, 99)]; // Mantener solo 100 logs
+      const updatedLogs = [newLog, ...prevLogs.slice(0, 99)];
       return updatedLogs;
     });
     
     console.log(`[${timestamp}] [${level.toUpperCase()}] ${message}`);
   }, []);
 
-  // Agregar servidor
-  const addServer = useCallback(async (serverData) => {
+  const updateStats = useCallback((serversList) => {
+    const totalChannels = serversList.reduce((sum, server) => sum + (server.channels || 0), 0);
+    const cacheSize = (() => {
+      try {
+        const totalSize = JSON.stringify(serversList).length;
+        const sizeInMB = (totalSize / (1024 * 1024)).toFixed(1);
+        return `${sizeInMB} MB`;
+      } catch { return '0.0 MB'; }
+    })();
+    
+    setStats({
+      serversCount: serversList.length,
+      channelsCount: totalChannels,
+      lastScanTime: new Date().toLocaleTimeString(),
+      cacheSize
+    });
+  }, []);
+
+  const saveServers = useCallback((updatedServers) => {
     try {
-      const newServer = {
-        id: Date.now().toString(),
-        ...serverData,
-        channels: 0,
-        lastScan: null,
-        status: 'idle',
-        protocol: null,
-        categories: [],
-        totalChannels: 0
-      };
-
-      const updatedServers = [...servers, newServer];
-      setServers(updatedServers);
-      saveServers(updatedServers);
-      
-      addLog(`Servidor agregado: ${serverData.name}`, 'success');
-      return { success: true };
+      localStorage.setItem('iptv_servers', JSON.stringify(updatedServers));
+      updateStats(updatedServers);
     } catch (error) {
-      addLog(`Error agregando servidor: ${error.message}`, 'error');
-      return { success: false, error: error.message };
+      addLog('Error guardando servidores', 'error');
     }
-  }, [servers, saveServers, addLog]);
+  }, [addLog, updateStats]);
 
-  // Eliminar servidor
+  const addServer = useCallback(async (serverData) => {
+    if (!core) return { success: false, error: 'Core not initialized' };
+    const newServer = {
+      id: Date.now().toString(),
+      ...serverData,
+      channels: 0, lastScan: null, status: 'idle', protocol: null,
+      categories: [], totalChannels: 0
+    };
+    const updatedServers = [...servers, newServer];
+    setServers(updatedServers);
+    saveServers(updatedServers);
+    addLog(`Servidor agregado: ${serverData.name}`, 'success');
+    return { success: true };
+  }, [core, servers, saveServers, addLog]);
+
   const removeServer = useCallback((serverId) => {
     const updatedServers = servers.filter(s => s.id !== serverId);
     setServers(updatedServers);
@@ -125,174 +121,70 @@ const IPTVConstructor = () => {
     addLog('Servidor eliminado', 'info');
   }, [servers, saveServers, addLog]);
 
-  const detectProtocol = (data) => {
-    if (data.server_info && data.user_info) {
-      return 'Xtream Codes';
-    } else if (typeof data === 'string' && data.includes('#EXTINF')) {
-      return 'M3U Plus';
-    } else if (Array.isArray(data)) {
-      return 'Panel API';
-    } else {
-      return 'Desconocido';
-    }
-  };
-  
-  // Probar conexión de servidor
-  const testServerConnection = useCallback(async (server) => {
-    addLog(`Probando conexión: ${server.name}`, 'info');
-    
-    setServers(prev => prev.map(s => s.id === server.id ? { ...s, status: 'scanning' } : s));
-
-    try {
-      const response = await fetch('/api/iptv/test-connection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: server.url, username: server.username, password: server.password }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Error en la petición de prueba');
-      }
-
-      const updatedServers = servers.map(s => 
-        s.id === server.id 
-          ? { ...s, status: 'connected', protocol: detectProtocol(result.data) }
-          : s
-      );
+  const testAllConnections = useCallback(async () => {
+    if (!core) return;
+    if (servers.length === 0) return addLog('No hay servidores configurados para probar', 'warning');
+    addLog('Iniciando pruebas de conexión', 'info');
+    for (const server of servers) {
+      const result = await core.testServerConnection(server);
+      const status = result.success ? 'connected' : 'error';
+      const updatedServers = get().servers.map(s => s.id === server.id ? { ...s, status, protocol: result.protocol } : s);
       setServers(updatedServers);
       saveServers(updatedServers);
-      addLog(`✅ ${server.name}: Conexión exitosa (${result.method})`, 'success');
-      return { success: true, data: result.data };
-    } catch (error) {
-      setServers(prev => prev.map(s => s.id === server.id ? { ...s, status: 'error' } : s));
-      addLog(`❌ ${server.name}: ${error.message}`, 'error');
-      return { success: false, error: error.message };
     }
-  }, [servers, saveServers, addLog]);
+  }, [core, servers, addLog, saveServers]);
 
-
-  // Probar todas las conexiones
-  const testAllConnections = useCallback(async () => {
-    if (servers.length === 0) {
-      addLog('No hay servidores configurados para probar', 'warning');
-      return;
-    }
-
-    addLog('Iniciando pruebas de conexión masivas', 'info');
-    setScanning(true);
-    for (const server of servers) {
-      await testServerConnection(server);
-    }
-    setScanning(false);
-  }, [servers, testServerConnection, addLog]);
-
-  // Escanear servidor individual
   const scanServer = useCallback(async (server) => {
-    if (scanning) {
-      addLog('Ya hay un escaneo en progreso', 'warning');
-      return;
-    }
+    if (!core) return;
+    if (scanning) return addLog('Ya hay un escaneo en progreso', 'warning');
 
     setScanning(true);
     addLog(`[SCAN] Iniciando escaneo de ${server.name}`, 'info');
     
     setServers(prev => prev.map(s => s.id === server.id ? { ...s, status: 'scanning', channels: 0 } : s));
-
-    try {
-      const response = await fetch('/api/iptv/scan-server', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ server }),
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || `Error escaneando el servidor`);
+    
+    const result = await core.scanServer(server);
+    
+    const finalServers = get().servers.map(s => {
+      if (s.id === server.id) {
+        return {
+          ...s,
+          status: result.success ? 'completed' : 'error',
+          channels: result.channels,
+          protocol: result.protocol,
+          categories: result.categories,
+          lastScan: new Date().toLocaleString()
+        };
       }
-
-
-      if (result.success) {
-        const { results } = result;
-        const finalServers = servers.map(s => 
-          s.id === server.id 
-            ? { 
-                ...s, 
-                status: 'completed',
-                channels: results.totalChannels,
-                protocol: results.protocol,
-                categories: results.categories,
-                lastScan: new Date().toLocaleString()
-              }
-            : s
-        );
-        
-        setServers(finalServers);
-        saveServers(finalServers);
-        addLog(`[SCAN] ${server.name} completado: ${results.totalChannels} canales`, 'success');
-      } else {
-         throw new Error(result.error || `Error en el resultado del escaneo`);
-      }
-    } catch (error) {
-      setServers(prev => prev.map(s => s.id === server.id ? { ...s, status: 'error' } : s));
-      addLog(`[SCAN] Error escaneando ${server.name}: ${error.message}`, 'error');
-    } finally {
-      setScanning(false);
-    }
-  }, [servers, scanning, saveServers, addLog]);
-
-  // Escanear todos los servidores
-  const scanAllServers = useCallback(async () => {
-    if (scanning) {
-      addLog('Ya hay un escaneo en progreso', 'warning');
-      return;
-    }
-
-    if (servers.length === 0) {
-      addLog('No hay servidores configurados', 'warning');
-      return;
-    }
-
-    setScanning(true);
-    setProgress({
-      visible: true,
-      title: 'Escaneando servidores...',
-      current: 0,
-      total: servers.length,
-      percentage: 0
+      return s;
     });
 
+    setServers(finalServers);
+    saveServers(finalServers);
+    setScanning(false);
+  }, [core, scanning, addLog, saveServers]);
+
+  const scanAllServers = useCallback(async () => {
+    if (!core) return;
+    if (scanning) return addLog('Ya hay un escaneo en progreso', 'warning');
+    if (servers.length === 0) return addLog('No hay servidores configurados', 'warning');
+
+    setScanning(true);
+    setProgress({ visible: true, title: 'Escaneando servidores...', current: 0, total: servers.length, percentage: 0 });
     addLog(`[SCAN] Iniciando escaneo masivo de ${servers.length} servidor(es)`, 'info');
 
-    try {
-      for (let i = 0; i < servers.length; i++) {
-        const server = servers[i];
-        
-        setProgress(prev => ({
-          ...prev,
-          current: i + 1,
-          percentage: ((i + 1) / servers.length) * 100,
-          title: `Escaneando ${server.name}...`
-        }));
-
-        await scanServer(server);
-        
-        if (i < servers.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-      
-      addLog(`[SCAN] Escaneo masivo completado`, 'success');
-    } catch (error) {
-      addLog(`[SCAN] Error durante escaneo masivo: ${error.message}`, 'error');
-    } finally {
-      setScanning(false);
-      setProgress(prev => ({ ...prev, visible: false }));
+    for (let i = 0; i < servers.length; i++) {
+      const server = servers[i];
+      setProgress(prev => ({ ...prev, current: i + 1, percentage: ((i + 1) / servers.length) * 100, title: `Escaneando ${server.name}...` }));
+      await scanServer(server);
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
-  }, [servers, scanning, scanServer, addLog]);
+    
+    addLog(`[SCAN] Escaneo masivo completado`, 'success');
+    setScanning(false);
+    setProgress(prev => ({ ...prev, visible: false }));
+  }, [core, scanning, servers, addLog, scanServer]);
 
-  // Limpiar todos los datos
   const clearAllData = useCallback(() => {
     if (confirm('¿Está seguro de eliminar todos los servidores y datos? Esta acción no se puede deshacer.')) {
       setServers([]);
@@ -303,69 +195,32 @@ const IPTVConstructor = () => {
     }
   }, [updateStats, addLog]);
 
-  // Limpiar logs
   const clearLogs = useCallback(() => {
     setLogs([]);
     addLog('Log limpiado', 'info');
   }, [addLog]);
 
+  if (!core) {
+    return <p className="text-center p-8">Cargando módulo IPTV…</p>;
+  }
+
   return (
     <div className="iptv-constructor">
-      {/* Header */}
       <div className="header">
-        <h1>
-          <span className="icon">📺</span>
-          Constructor IPTV Pro Multi-Servidor
-        </h1>
+        <h1><span className="icon">📺</span> Constructor IPTV Pro Multi-Servidor</h1>
         <p>Sistema Inteligente con cache inteligente</p>
       </div>
 
       <div className="container">
-        {/* Configuración de Servidor */}
-        <ServerConfiguration 
-          onAddServer={addServer}
-          onTestConnections={testAllConnections}
-          scanning={scanning}
-        />
-
-        {/* Lista de Servidores */}
-        <ServersList 
-          servers={servers}
-          onRemoveServer={removeServer}
-          onScanServer={scanServer}
-          onTestConnection={testServerConnection}
-          scanning={scanning}
-        />
-
-        {/* Panel de Control */}
+        <ServerConfiguration onAddServer={addServer} onTestConnections={testAllConnections} scanning={scanning} />
+        <ServersList servers={servers} onRemoveServer={removeServer} onScanServer={scanServer} scanning={scanning} />
         <div className="control-panel">
-          <button 
-            className="btn btn-info" 
-            onClick={scanAllServers}
-            disabled={scanning}
-          >
-            <span>🔍</span> Escanear Todos los Servidores
-          </button>
-          <button 
-            className="btn btn-danger" 
-            onClick={clearAllData}
-            disabled={scanning}
-          >
-            <span>🗑️</span> Limpiar Todos
-          </button>
+          <button className="btn btn-info" onClick={scanAllServers} disabled={scanning}><span>🔍</span> Escanear Todos los Servidores</button>
+          <button className="btn btn-danger" onClick={clearAllData} disabled={scanning}><span>🗑️</span> Limpiar Todos</button>
         </div>
-
-        {/* Contenedor de Progreso */}
         <ProgressContainer progress={progress} />
-
-        {/* Dashboard de Estadísticas */}
         <StatsProDashboard stats={stats} />
-
-        {/* Log de Actividades */}
-        <ActivityLog 
-          logs={logs}
-          onClearLogs={clearLogs}
-        />
+        <ActivityLog logs={logs} onClearLogs={clearLogs} />
       </div>
     </div>
   );

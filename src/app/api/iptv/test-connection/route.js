@@ -1,53 +1,43 @@
 import { NextResponse } from 'next/server';
-import { IPTVCore } from '@/lib/iptv-core';
-import { IPTVErrorHandler } from '@/lib/error-handler';
 
 export async function POST(request) {
   try {
-    const serverData = await request.json();
+    const { url, username, password } = await request.json();
     
-    if (!serverData.url || !serverData.username || !serverData.password) {
+    if (!url || !username || !password) {
       return NextResponse.json(
-        { success: false, error: 'URL, username y password son requeridos' },
+        { error: 'URL, username y password son requeridos' },
         { status: 400 }
       );
     }
 
-    const iptvCore = new IPTVCore();
+    const testUrl = `${url}/player_api.php?username=${username}&password=${password}&action=get_server_info`;
     
-    const result = await IPTVErrorHandler.handleRetry(
-      () => iptvCore.testServerConnection(serverData),
-      { serverName: serverData.name, operationType: 'connection_test' },
-      5 // 5 intentos para la prueba de conexión
-    );
+    const res = await fetch(testUrl, {
+      method: 'GET',
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept': 'application/json' },
+    });
 
-    if (result.success) {
-        const protocol = result.data ? iptvCore.detectProtocol(result.data) : null;
-        return NextResponse.json({
-          success: true,
-          data: {
-            ...result.data,
-            protocol,
-          },
-          method: 'proxy'
-        });
-    } else {
-        throw new Error(result.error || 'Test de conexión falló después de múltiples reintentos');
+    if (res.status >= 500) {
+      console.warn(`[API/test-connection] Servidor responde con ${res.status}: ${testUrl}`);
+      // Return a non-error response to the client to be handled gracefully
+      return NextResponse.json({ success: false, error: `El servidor respondió con un error ${res.status}`, status: res.status }, { status: 200 });
     }
+
+    if (!res.ok) {
+        const errorText = await res.text();
+        return NextResponse.json({ success: false, error: `Error HTTP ${res.status}: ${errorText}`, status: res.status }, { status: 200 });
+    }
+
+    const data = await res.json();
+    
+    return NextResponse.json({ success: true, data, method: 'proxy' });
 
   } catch (error) {
     console.error('Error en test-connection:', error);
-    const analyzedError = IPTVErrorHandler.analyzeError(error);
-
-    return NextResponse.json({
-      success: false,
-      error: analyzedError.message,
-      code: analyzedError.code,
-      suggestions: analyzedError.suggestions,
-      isRetryable: analyzedError.isRetryable,
-      severity: analyzedError.severity,
-    }, { 
-      status: analyzedError.code === 'SERVER_ERROR_512' ? 512 : 502 
-    });
+    return NextResponse.json(
+      { success: false, error: 'Error interno del proxy', details: error.message },
+      { status: 500 }
+    );
   }
 }
