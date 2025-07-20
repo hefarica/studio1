@@ -50,7 +50,7 @@ const fetchIptvDataFlow = ai.defineFlow(
             'Accept': 'application/json, */*', // Accept JSON and fallbacks
           }
         });
-
+        
         if (response.status === 512) {
           throw new Error(`Request failed with status 512`);
         }
