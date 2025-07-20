@@ -14,30 +14,28 @@ import { AiOptimizer } from '@/components/dashboard/ai-optimizer';
 import { ChannelExporter } from '@/components/dashboard/channel-exporter';
 import { fetchXtreamCodesData } from './actions';
 import { useToast } from '@/hooks/use-toast';
+import { useLogsStore } from '@/store/logs';
 
 export default function DashboardPage() {
   const {
     servers,
-    logs,
-    isScanning,
-    scanProgress,
-    eta,
-    memoryUsage,
-    totalChannelsFound,
     actions: {
       loadInitialServers,
-      addLog,
-      setIsScanning,
-      setScanProgress,
-      setEta,
-      setServers,
-      setTotalChannelsFound,
       addServer: addServerToStore,
       deleteServer: deleteServerFromStore,
+      updateServer,
       clearServers,
-      clearLogs,
     },
   } = useServersStore();
+
+  const { addLog, clearLogs, logs } = useLogsStore();
+  
+  // Fake state for now, will be replaced by useScanningStore
+  const isScanning = false;
+  const scanProgress = 0;
+  const eta = "00:00:00";
+  const memoryUsage = 128;
+  const totalChannelsFound = servers.reduce((acc, s) => acc + (s.activeChannels || 0), 0);
 
   const { toast } = useToast();
 
@@ -47,28 +45,22 @@ export default function DashboardPage() {
 
   const runScan = async (serversToScan: Server[]) => {
     if (isScanning) return;
-    setIsScanning(true);
-    setScanProgress(0);
-    setEta('Calculating...');
+    // setIsScanning(true);
+    // setScanProgress(0);
+    // setEta('Calculating...');
     addLog(`[INFO] Starting real scan for ${serversToScan.length} server(s).`, 'info');
 
     const serverIdsToScan = serversToScan.map(s => s.id);
     
     // Reset channel counts for the servers being scanned.
-    const updatedServers = servers.map(s => 
-      serverIdsToScan.includes(s.id) 
-        ? { ...s, status: 'Scanning', activeChannels: 0 } 
-        : s
-    );
-    setServers(updatedServers);
+    serverIdsToScan.forEach(id => {
+      updateServer(id, { status: 'Scanning', activeChannels: 0 });
+    });
 
-    // Recalculate total channels based on non-scanned servers
-    const remainingChannels = updatedServers
+    let grandTotal = servers
       .filter(s => !serverIdsToScan.includes(s.id))
       .reduce((acc, server) => acc + (server.activeChannels || 0), 0);
-    setTotalChannelsFound(remainingChannels);
 
-    let grandTotal = remainingChannels;
     const scanStartTime = Date.now();
 
     for (let i = 0; i < serversToScan.length; i++) {
@@ -83,23 +75,21 @@ export default function DashboardPage() {
             addLog(`[SUCCESS] Scan of ${server.name} completed. ${channelsFound.toLocaleString()} channels found.`, 'success');
             const scanDate = new Date().toLocaleString('en-US');
             
-            setServers(currentServers => currentServers.map(s =>
-              s.id === server.id 
-                ? { ...s, activeChannels: channelsFound, lastScan: scanDate, status: 'Online' } 
-                : s
-            ));
+            updateServer(server.id, { 
+              activeChannels: channelsFound, 
+              lastScan: scanDate, 
+              status: 'Online' 
+            });
             
-            setTotalChannelsFound(grandTotal);
-            
-            const currentProgress = (i + 1) / serversToScan.length * 100;
-            setScanProgress(currentProgress);
+            // This will be replaced by scanning store
+            // setTotalChannelsFound(grandTotal);
+            // const currentProgress = (i + 1) / serversToScan.length * 100;
+            // setScanProgress(currentProgress);
 
         } catch (error: any) {
             const errorMessage = error.message || 'An unknown error occurred.';
             addLog(`[ERROR] Scan failed for ${server.name}: ${errorMessage}`, 'error');
-            setServers(currentServers => currentServers.map(s =>
-              s.id === server.id ? { ...s, status: 'Error' } : s
-            ));
+            updateServer(server.id, { status: 'Error' });
             
             let toastDescription = `Please check the server URL and credentials. Details: ${errorMessage}`;
             if (errorMessage.includes('512')) {
@@ -119,9 +109,9 @@ export default function DashboardPage() {
     const scanDuration = (Date.now() - scanStartTime) / 1000;
     addLog(`[SUCCESS] Scan completed in ${scanDuration.toFixed(2)} seconds. Total channels found: ${grandTotal.toLocaleString()}`, 'success');
     
-    setIsScanning(false);
-    setScanProgress(100);
-    setEta('00:00:00');
+    // setIsScanning(false);
+    // setScanProgress(100);
+    // setEta('00:00:00');
   };
 
   const handleScanServer = (serverId: string) => {
