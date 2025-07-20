@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -18,7 +19,7 @@ import { ChannelExporter } from '@/components/dashboard/channel-exporter';
 import type { Server } from '@/lib/types';
 
 export default function DashboardPage() {
-  const { servers, addServer, deleteServer, clearAllServers, stats } = useServersStore();
+  const { servers, addServer, removeServer, clearAllServers, stats } = useServersStore();
   const { isScanning, progress, startScan, stopScan } = useScanningStore();
   const { logs, clearLogs, addLog } = useLogsStore();
   const { toast } = useToast();
@@ -78,7 +79,7 @@ export default function DashboardPage() {
             <ServerList
               servers={servers}
               onScanServer={(id) => startScan([id])}
-              onDeleteServer={deleteServer}
+              onDeleteServer={removeServer}
               isScanning={isScanning}
             />
             <ControlPanel
