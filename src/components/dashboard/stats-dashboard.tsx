@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +11,7 @@ import { useServersStore } from '@/store/servers';
 export function StatsDashboard({ serverCount, channelCount, lastScanTime }: Omit<Stats, 'cacheSize'>) {
   
   const [isClient, setIsClient] = useState(false);
-  const cacheSize = useServersStore(s => s.cacheSize);
+  const {cacheSize} = useServersStore(s => s.stats);
 
   useEffect(() => {
     setIsClient(true);
@@ -34,7 +35,7 @@ export function StatsDashboard({ serverCount, channelCount, lastScanTime }: Omit
     },
     { 
       label: 'Cache Size', 
-      value: isClient ? `${cacheSize.toFixed(1)} MB` : '...', 
+      value: isClient ? `${cacheSize}` : '...', 
       icon: HardDrive,
     },
   ];
