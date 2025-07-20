@@ -10,6 +10,7 @@ import { ServerConfig } from '@/components/dashboard/server-config';
 import { ControlPanel } from '@/components/dashboard/control-panel';
 import { ProgressOverview } from '@/components/dashboard/progress-overview';
 import { AiOptimizer } from '@/components/dashboard/ai-optimizer';
+import { StreamAnalyzer } from '@/components/dashboard/stream-analyzer';
 
 const initialServers: Server[] = [
   { 
@@ -17,14 +18,14 @@ const initialServers: Server[] = [
     name: 'EVESTV IP TV', 
     url: 'http://126954339934.d4ktv.info:80', 
     status: 'Online', 
-    activeChannels: 39860,
+    activeChannels: 0,
     user: 'uqb3fbu3b',
-    lastScan: '19/7/2025, 21:03:14',
+    lastScan: 'Nunca',
   },
 ];
 
 const initialLogs: LogEntry[] = [
-    { id: 'log1', timestamp: new Date(Date.now() - 2000), message: '[0:02:56] [INFO]', level: 'info' },
+    { id: 'log_init', timestamp: new Date(), message: '[INFO] Sistema listo para operar.', level: 'info' },
 ];
 
 export default function DashboardPage() {
@@ -35,13 +36,12 @@ export default function DashboardPage() {
   const [scanProgress, setScanProgress] = useState(0);
   const [eta, setEta] = useState('00:00:00');
   const [totalChannelsFound, setTotalChannelsFound] = useState(0);
-  const [memoryUsage, setMemoryUsage] = useState(256);
+  const [memoryUsage, setMemoryUsage] = useState(128);
 
   useEffect(() => {
     const initialTotalChannels = servers.reduce((acc, server) => acc + (server.activeChannels || 0), 0);
     setTotalChannelsFound(initialTotalChannels);
-  }, []);
-
+  }, [servers]);
 
   const addLog = useCallback((message: string, level: 'info' | 'warning' | 'error' | 'success') => {
     const timestamp = new Date();
@@ -56,9 +56,10 @@ export default function DashboardPage() {
 
     setIsScanning(true);
     setScanProgress(0);
-    setTotalChannelsFound(0);
+    setTotalChannelsFound(0); // Reiniciar el contador global
     addLog('[INFO] Iniciando escaneo de todos los servidores...', 'info');
 
+    // Reiniciar canales de cada servidor antes de escanear
     setServers(prevServers => prevServers.map(s => ({ ...s, activeChannels: 0, status: 'Scanning' })));
 
     const totalDuration = 5 * 60 * 1000;
@@ -129,18 +130,19 @@ export default function DashboardPage() {
   
   const totalChannels = servers.reduce((acc, server) => acc + (server.activeChannels || 0), 0);
   
-  const lastScan = servers.length > 0 ? (
-    servers.map(s => {
-        if (!s.lastScan) return new Date(0);
-        const parts = s.lastScan.split(', ');
-        if (!parts || parts.length < 2) return new Date(0);
-        const dateParts = parts[0].split('/');
-        const timeParts = parts[1].split(':');
-        if (dateParts.length < 3 || timeParts.length < 3) return new Date(0);
-        return new Date(+dateParts[2], +dateParts[1] - 1, +dateParts[0], +timeParts[0], +timeParts[1], +timeParts[2]);
-    }).reduce((latest, sDate) => sDate > latest ? sDate : latest, new Date(0))
-    .toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
-  ) : '--:--:--';
+  const lastScan = servers.length > 0 && servers.some(s => s.lastScan && s.lastScan !== 'Nunca')
+    ? new Date(Math.max(...servers
+        .map(s => {
+            if (!s.lastScan || s.lastScan === 'Nunca') return 0;
+            const parts = s.lastScan.split(', ');
+            if (parts.length < 2) return 0;
+            const dateParts = parts[0].split('/');
+            const timeParts = parts[1].split(':');
+            if (dateParts.length < 3 || timeParts.length < 3) return 0;
+            return new Date(+dateParts[2], +dateParts[1] - 1, +dateParts[0], +timeParts[0], +timeParts[1], +timeParts[2]).getTime();
+        })
+    )).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+    : '--:--:--';
 
 
   const handleClearAll = () => {
@@ -156,7 +158,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-background text-foreground">
       <Header />
       
-      <main className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
+      <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
              <ServerConfig onAddServer={addServer} />
@@ -178,11 +180,14 @@ export default function DashboardPage() {
           isScanning={isScanning}
         />
         
-        <AiOptimizer />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <AiOptimizer />
+          <StreamAnalyzer />
+        </div>
 
         <StatsDashboard 
             serverCount={servers.length} 
-            channelCount={totalChannels}
+            channelCount={totalChannelsFound}
             lastScanTime={lastScan}
             cacheSize={cacheSize}
         />
