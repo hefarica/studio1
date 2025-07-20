@@ -7,6 +7,19 @@ const CORS_PROXIES = [
   'https://thingproxy.freeboard.io/fetch/',
 ];
 
+async function makeRequestWithTimeout(url, options = {}, timeout = 15000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+
+    const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+}
+
+
 export async function POST(request) {
   try {
     const { url, username, password } = await request.json();
@@ -22,14 +35,13 @@ export async function POST(request) {
     
     // Intentar conexión directa primero
     try {
-      const directResponse = await fetch(testUrl, {
+      const directResponse = await makeRequestWithTimeout(testUrl, {
         method: 'GET',
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Accept': 'application/json',
         },
-        timeout: 10000,
-      });
+      }, 10000);
 
       if (directResponse.ok) {
         const data = await directResponse.json();
@@ -44,25 +56,21 @@ export async function POST(request) {
     }
 
     // Probar con proxies CORS
-    for (let i = 0; i < CORS_PROXIES.length; i++) {
-      const proxy = CORS_PROXIES[i];
-      
+    for (const proxy of CORS_PROXIES) {
       try {
         const proxyUrl = proxy + encodeURIComponent(testUrl);
         
-        const response = await fetch(proxyUrl, {
+        const response = await makeRequestWithTimeout(proxyUrl, {
           method: 'GET',
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json',
           },
-          timeout: 15000,
         });
 
         if (response.ok) {
           const data = await response.json();
           
-          // Manejar respuesta de allorigins.win
           if (data.contents) {
             const parsedData = JSON.parse(data.contents);
             return NextResponse.json({
@@ -73,7 +81,6 @@ export async function POST(request) {
             });
           }
           
-          // Respuesta directa del proxy
           if (data.server_info || data.user_info || Array.isArray(data)) {
             return NextResponse.json({
               success: true,
