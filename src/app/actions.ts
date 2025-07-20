@@ -16,12 +16,16 @@ async function fetchWithTimeout(resource: string, options: RequestInit & { timeo
   const { timeout, ...rest } = options;
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
-  const response = await fetch(resource, {
-    ...rest,
-    signal: controller.signal
-  });
-  clearTimeout(id);
-  return response;
+  
+  try {
+    const response = await fetch(resource, {
+      ...rest,
+      signal: controller.signal
+    });
+    return response;
+  } finally {
+    clearTimeout(id);
+  }
 }
 
 
@@ -31,16 +35,22 @@ export async function fetchXtreamCodesData(serverUrl: string, username: string, 
     try {
         const categoriesResponse = await fetchWithTimeout(`${baseUrl}&action=get_live_categories`, { timeout: 15000 });
         if (!categoriesResponse.ok) {
-            throw new Error(`Failed to fetch categories, status: ${categoriesResponse.status}`);
+            // Handle non-JSON error responses gracefully
+            const errorText = await categoriesResponse.text();
+            console.error(`Failed to fetch categories, status: ${categoriesResponse.status}, response: ${errorText}`);
+            throw new Error(`Failed to fetch categories. Server responded with status ${categoriesResponse.status}.`);
         }
         const categories = await categoriesResponse.json();
 
         if (!Array.isArray(categories)) {
-            throw new Error('Categories response is not an array.');
+            // This can happen if the API returns an auth error object instead of an array
+            console.error('Categories response is not an array.', categories);
+            throw new Error('Failed to authenticate or invalid categories format.');
         }
 
         let allStreams: any[] = [];
         for (const category of categories) {
+            // Skip the "All" category to avoid duplicates and unnecessary processing, as seen in the provided logic.
             if (category.category_id === 'all') continue; 
             
             try {
@@ -50,15 +60,19 @@ export async function fetchXtreamCodesData(serverUrl: string, username: string, 
                     if (Array.isArray(streams)) {
                         allStreams = [...allStreams, ...streams];
                     }
+                } else {
+                     console.warn(`Could not fetch streams for category ${category.category_name}. Status: ${streamsResponse.status}`);
                 }
-            } catch (e) {
-                console.warn(`Could not fetch streams for category ${category.category_name}`, e);
+            } catch (e: any) {
+                // Log error for a specific category but continue with others
+                console.warn(`Skipping category "${category.category_name}" due to error:`, e.message);
             }
         }
         
         return allStreams;
-    } catch (error) {
-        console.error('Error fetching Xtream Codes data:', error);
-        throw new Error('Failed to fetch Xtream Codes data.');
+    } catch (error: any) {
+        console.error('Error fetching Xtream Codes data:', error.message);
+        // Provide a more user-friendly error
+        throw new Error('Failed to fetch data from the server. Please check the URL and credentials.');
     }
 }
