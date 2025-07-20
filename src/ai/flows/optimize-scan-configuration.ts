@@ -14,26 +14,26 @@ import {z} from 'genkit';
 const OptimizeScanConfigurationInputSchema = z.object({
   scanData: z
     .string()
-    .describe('Historical scan data in JSON format, including server URLs, scan times, and active channel counts.'),
+    .describe('Datos históricos de escaneo en formato JSON, incluyendo URLs de servidor, tiempos de escaneo y conteo de canales activos. También incluye la consulta del usuario.'),
   currentConfiguration: z
     .string()
-    .describe('The current scan configuration settings in JSON format.'),
+    .describe('La configuración actual de escaneo en formato JSON.'),
 });
 export type OptimizeScanConfigurationInput = z.infer<typeof OptimizeScanConfigurationInputSchema>;
 
 const OptimizeScanConfigurationOutputSchema = z.object({
   suggestedFrequency: z
     .string()
-    .describe('Suggested scan frequency (e.g., daily, weekly, or custom cron expression).'),
+    .describe('Frecuencia de escaneo sugerida (ej. "Diaria", "Semanal", o una expresión cron personalizada).'),
   serverPrioritization: z
     .array(z.string())
-    .describe('List of server URLs prioritized for scanning based on historical channel activity.'),
+    .describe('Lista de URLs de servidores priorizadas para escanear, basada en la actividad histórica y la consulta del usuario.'),
   resourceAllocation: z
     .string()
-    .describe('Suggestions for resource allocation (e.g., memory or threads) based on scan data.'),
+    .describe('Sugerencias para la asignación de recursos (ej. memoria o hilos) basada en los datos de escaneo.'),
   additionalNotes: z
     .string()
-    .describe('Any additional notes or recommendations for optimizing the scanning process.'),
+    .describe('Cualquier nota o recomendación adicional para optimizar el proceso de escaneo. Responde directamente a la consulta del usuario si la hay.'),
 });
 export type OptimizeScanConfigurationOutput = z.infer<typeof OptimizeScanConfigurationOutputSchema>;
 
@@ -45,21 +45,21 @@ const prompt = ai.definePrompt({
   name: 'optimizeScanConfigurationPrompt',
   input: {schema: OptimizeScanConfigurationInputSchema},
   output: {schema: OptimizeScanConfigurationOutputSchema},
-  prompt: `You are an expert system administrator specializing in optimizing IPTV server scanning.
+  prompt: `Eres un administrador de sistemas experto, especializado en optimizar el escaneo de servidores IPTV. Tu idioma es el español.
 
-You will analyze past scan data and current configuration settings to suggest optimal configuration settings for future scans.
+Analizarás datos de escaneos pasados y la configuración actual para sugerir ajustes óptimos para futuros escaneos. También responderás a la consulta específica del usuario.
 
-Consider the following information:
+Considera la siguiente información:
 
-Historical Scan Data: {{{scanData}}}
-Current Configuration: {{{currentConfiguration}}}
+Datos Históricos y Consulta del Usuario: {{{scanData}}}
+Configuración Actual: {{{currentConfiguration}}}
 
-Based on this information, provide suggestions for:
+Basado en esta información, proporciona sugerencias en español para:
 
-- Suggested Scan Frequency: How often should the servers be scanned?
-- Server Prioritization: Which servers should be scanned first based on historical activity?
-- Resource Allocation: How should resources (memory, threads) be allocated for optimal performance?
-- Additional Notes: Any other recommendations for improving the scanning process.
+- Frecuencia Sugerida: ¿Con qué frecuencia se deben escanear los servidores?
+- Priorización de Servidores: ¿Qué servidores deberían escanearse primero según la actividad histórica?
+- Asignación de Recursos: ¿Cómo deberían asignarse los recursos (memoria, hilos) para un rendimiento óptimo?
+- Notas Adicionales: Cualquier otra recomendación para mejorar el proceso, respondiendo directamente a la consulta del usuario si se proporciona.
 `,
 });
 

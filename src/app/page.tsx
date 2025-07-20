@@ -9,6 +9,7 @@ import { ActivityLogs } from '@/components/dashboard/activity-logs';
 import { ServerConfig } from '@/components/dashboard/server-config';
 import { ControlPanel } from '@/components/dashboard/control-panel';
 import { ProgressOverview } from '@/components/dashboard/progress-overview';
+import { AiOptimizer } from '@/components/dashboard/ai-optimizer';
 
 const initialServers: Server[] = [
   { 
@@ -55,15 +56,14 @@ export default function DashboardPage() {
 
     setIsScanning(true);
     setScanProgress(0);
-    setTotalChannelsFound(0); // Reiniciar el contador de canales encontrados
+    setTotalChannelsFound(0);
     addLog('[INFO] Iniciando escaneo de todos los servidores...', 'info');
 
-    // Reinicia los canales de cada servidor antes de empezar
     setServers(prevServers => prevServers.map(s => ({ ...s, activeChannels: 0, status: 'Scanning' })));
 
-    const totalDuration = 5 * 60 * 1000; // 5 minutos para la simulación
+    const totalDuration = 5 * 60 * 1000;
     const totalChannelsToFind = 40127;
-    const intervalTime = 250; // Actualizar cada 250ms
+    const intervalTime = 250; 
     const steps = totalDuration / intervalTime;
     let currentStep = 0;
     let channelsFoundSoFar = 0;
@@ -79,11 +79,10 @@ export default function DashboardPage() {
       const ss = String(etaDate.getUTCSeconds()).padStart(2, '0');
       setEta(`00:${mm}:${ss}`);
       
-      // Simular encontrar canales de forma realista
       const newChannelsThisStep = Math.floor(Math.random() * (totalChannelsToFind / steps) * 2);
       channelsFoundSoFar += newChannelsThisStep;
       setTotalChannelsFound(Math.min(channelsFoundSoFar, totalChannelsToFind));
-      setMemoryUsage(150 + Math.floor(Math.random() * 50)); // Simular uso de memoria entre 150-200MB
+      setMemoryUsage(150 + Math.floor(Math.random() * 50)); 
 
       if (currentStep % 20 === 0) {
         addLog(`[INFO] Escaneo en progreso: ${Math.round(progress)}%. Canales encontrados: ${totalChannelsFound.toLocaleString()}`, 'info');
@@ -99,11 +98,11 @@ export default function DashboardPage() {
         const scanDate = new Date().toLocaleString('es-ES');
         setServers(prevServers => prevServers.map(s => ({
           ...s,
-          activeChannels: totalChannelsToFind / prevServers.length, // Distribuir canales entre servidores para la demo
+          activeChannels: Math.floor(totalChannelsToFind / prevServers.length),
           lastScan: scanDate,
           status: 'Online'
         })));
-        setCacheSize(prev => prev + (Math.random() * 5)); // Aumentar cache
+        setCacheSize(prev => prev + (Math.random() * 5));
       }
     }, intervalTime);
   };
@@ -154,7 +153,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-dark-bg text-gray-200">
+    <div className="min-h-screen bg-background text-foreground">
       <Header />
       
       <main className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
@@ -179,6 +178,8 @@ export default function DashboardPage() {
           isScanning={isScanning}
         />
         
+        <AiOptimizer />
+
         <StatsDashboard 
             serverCount={servers.length} 
             channelCount={totalChannels}
