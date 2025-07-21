@@ -1,104 +1,152 @@
+
 'use client';
 
-import React, { useEffect } from 'react';
-import { DashboardHeader } from '@/components/iptv/DashboardHeader';
-import { ServerConfig } from '@/components/iptv/ServerConfig';
-import { ServersList } from '@/components/iptv/ServersList';
-import { ControlPanel } from '@/components/iptv/ControlPanel';
-import { ProgressBar } from '@/components/iptv/ProgressBar';
-import { StatsCards } from '@/components/iptv/StatsCards';
-import { ActivityLog } from '@/components/iptv/ActivityLog';
-import { NotificationProvider } from '@/components/providers/NotificationProvider';
-import { useLogs } from '@/store/logs';
+import React, { useCallback, useEffect } from 'react';
+import { Toaster, useToast } from '@/components/ui/toaster';
 import { useServersStore } from '@/store/servers';
+import { useLogsStore } from '@/store/logs';
+import { useScanProgress } from '@/hooks/useScanProgress';
+import type { Server } from '@/lib/types';
+
+import { Header } from '@/components/dashboard/header';
+import { ServerConfig } from '@/components/dashboard/server-config';
+import { ServerList } from '@/components/dashboard/server-list';
+import { ControlPanel } from '@/components/dashboard/control-panel';
+import { ProgressOverview } from '@/components/dashboard/progress-overview';
+import { StatsDashboard } from '@/components/dashboard/stats-dashboard';
+import { ActivityLogs } from '@/components/dashboard/activity-logs';
+import { AiOptimizer } from '@/components/dashboard/ai-optimizer';
+import { ChannelExporter } from '@/components/dashboard/channel-exporter';
 
 export default function DashboardPage() {
-  const { addLog } = useLogs();
-  const { refreshStats } = useServersStore();
+  const { servers, addServer, removeServer, clearAllServers, stats } = useServersStore();
+  const { logs, addLog, clearLogs } = useLogsStore();
+  const { toast } = useToast();
+
+  const {
+    startScan,
+    stopScan,
+    resetScan,
+    scanState,
+    progress,
+    channelsFound,
+    timeElapsed,
+    timeEstimated,
+  } = useScanProgress();
 
   useEffect(() => {
-    // Initialize dashboard
-    addLog('🚀 Dashboard Studio1 IPTV Pro iniciado correctamente', 'success');
-    addLog('📋 Sistema listo para configurar servidores IPTV', 'info');
-    addLog('🔧 Manejo avanzado de errores 512 y "unexpected response" activo', 'info');
-    addLog('🤖 Sistema de IA con Genkit configurado', 'info');
-    
-    // Refresh stats on mount
-    refreshStats();
-    
-    // Log system info
-    if (typeof window !== 'undefined') {
-        const systemInfo = {
-          userAgent: navigator.userAgent.slice(0, 50) + '...',
-          language: navigator.language,
-          platform: navigator.platform,
-          cookieEnabled: navigator.cookieEnabled,
-          onLine: navigator.onLine
-        };
-        
-        addLog(`💻 Sistema: ${systemInfo.platform} | ${systemInfo.language} | Online: ${systemInfo.onLine}`, 'debug');
-    }
+    addLog('Dashboard initialized');
+  }, [addLog]);
 
-    // Cleanup function
-    return () => {
-      addLog('📴 Dashboard cerrado', 'info');
-    };
-  }, [addLog, refreshStats]);
+  const handleAddServer = async (server: Omit<Server, 'id' | 'status' | 'activeChannels' | 'lastScan'>) => {
+    try {
+      await addServer(server);
+      toast({
+        title: 'Server Added',
+        description: `${server.name} has been configured.`,
+      });
+      addLog(`Server added: ${server.name}`, 'success');
+    } catch (e: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to Add Server',
+        description: e.message,
+      });
+      addLog(`Failed to add server: ${e.message}`, 'error');
+    }
+  };
+
+  const handleScanServer = useCallback((id: string) => {
+    const server = servers.find(s => s.id === id);
+    if (server) {
+      startScan({
+          username: server.username,
+          password: server.password,
+      });
+    }
+  }, [servers, startScan]);
+
+  const handleScanAll = useCallback(() => {
+    if (servers.length === 0) {
+      toast({ variant: 'destructive', title: 'No servers to scan.'});
+      return;
+    }
+    // For now, we just scan the first server as a demo of the progress system
+    const firstServer = servers[0];
+     startScan({
+        username: firstServer.username,
+        password: firstServer.password,
+    });
+  }, [servers, startScan]);
+
+
+  const handleClearAll = () => {
+    if (confirm('Are you sure you want to delete all servers and logs?')) {
+      clearAllServers();
+      clearLogs();
+      resetScan();
+      toast({
+        title: 'All Data Cleared',
+        description: 'Servers and logs have been wiped.',
+      });
+      addLog('All data has been cleared.', 'warning');
+    }
+  };
+
+  const handleDeleteServer = (id: string) => {
+    const serverName = servers.find(s => s.id === id)?.name || 'Unknown';
+    removeServer(id);
+    toast({
+      title: 'Server Removed',
+      description: `Server ${serverName} has been deleted.`,
+    });
+    addLog(`Server removed: ${serverName}`, 'info');
+  };
 
   return (
-    <NotificationProvider>
-      <div className="min-h-screen bg-slate-900 text-slate-100">
-        {/* Header */}
-        <DashboardHeader />
-        
-        {/* Main Dashboard Content */}
-        <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-          {/* Server Configuration */}
-          <ServerConfig />
+    <>
+      <div className="min-h-screen w-full bg-background text-foreground">
+        <Header />
+        <main className="mx-auto max-w-7xl space-y-6 px-4 py-8">
+            <StatsDashboard 
+                serverCount={stats.totalServers} 
+                channelCount={stats.totalChannels}
+                lastScanTime={stats.lastScanTime || 'N/A'}
+            />
           
-          {/* Servers List */}
-          <ServersList />
-          
-          {/* Control Panel */}
-          <ControlPanel />
-          
-          {/* Progress Bar (only shows during scanning) */}
-          <ProgressBar />
-          
-          {/* Statistics Cards */}
-          <StatsCards />
-          
-          {/* Activity Log */}
-          <ActivityLog />
-        </main>
-        
-        {/* Footer */}
-        <footer className="bg-dark-darker border-t border-slate-700 py-8 mt-16">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="text-center text-slate-400">
-              <p className="mb-2">
-                Desarrollado con ❤️ para <strong className="text-primary-400">Ingenio Pichichi S.A.</strong>
-              </p>
-              <p className="text-sm">
-                Studio1 - Constructor IPTV Pro Multi-Servidor v2.0 | 
-                Sistema Inteligente con Next.js + Firebase + Genkit
-              </p>
-              <div className="flex items-center justify-center gap-4 mt-4 text-xs">
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                  Sistema Activo
-                </span>
-                <span>•</span>
-                <span>Manejo Error 512 ✅</span>
-                <span>•</span>
-                <span>IA Integrada 🤖</span>
-                <span>•</span>
-                <span>40K+ Canales Soportados 📺</span>
+            {scanState.isScanning && (
+                <ProgressOverview 
+                    progress={progress}
+                    eta={new Date(timeEstimated).toISOString().slice(14, 19)}
+                    memoryUsage={Math.round(Math.random() * (150-100) + 100)} // Mock data
+                    totalChannels={channelsFound}
+                />
+            )}
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div className="space-y-6 lg:col-span-2">
+                <ServerConfig onAddServer={handleAddServer} />
+                <ServerList 
+                    servers={servers} 
+                    onScanServer={handleScanServer} 
+                    onDeleteServer={handleDeleteServer} 
+                    isScanning={scanState.isScanning}
+                />
+                <ControlPanel 
+                    onScanAll={handleScanAll} 
+                    onClearAll={handleClearAll} 
+                    isScanning={scanState.isScanning}
+                />
+                <ActivityLogs logs={logs} onClearLog={clearLogs} />
+              </div>
+              <div className="space-y-6 lg:col-span-1">
+                <AiOptimizer />
+                <ChannelExporter channelCount={stats.totalChannels} />
               </div>
             </div>
-          </div>
-        </footer>
+        </main>
       </div>
-    </NotificationProvider>
+      <Toaster />
+    </>
   );
 }
