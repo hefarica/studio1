@@ -8,8 +8,8 @@ import { BloomFilter } from 'bloomfilter';
 interface BloomFilterConfig {
   expectedElements: number;
   falsePositiveRate: number;
-  hashFunctions: number;
-  bitArraySize: number;
+  hashFunctions?: number;
+  bitArraySize?: number;
 }
 
 interface DuplicationResult {
@@ -17,139 +17,116 @@ interface DuplicationResult {
   confidence: number;
   similarChannels: string[];
   processingTime: number;
+  duplicateType: 'exact' | 'similar' | 'potential' | 'none';
 }
 
-interface ChannelFingerprint {
-  urlHash: string;
+interface ChannelSignature {
   nameHash: string;
-  combinedHash: string;
+  urlHash: string;
   normalizedName: string;
+  normalizedUrl: string;
+  combinedHash: string;
+  group?: string;
 }
 
 export class IPTVBloomFilter {
-  private bt: BloomFilter;
-  private channelFingerprints: Map<string, ChannelFingerprint>;
-  private duplicateCounter: Map<string, number>;
-  private performanceMetrics: {
-    totalChecks: number;
-    duplicatesFound: number;
-    averageProcessingTime: number;
-  };
+  private bloomFilter: BloomFilter;
+  private channelSignatures: Map<string, ChannelSignature>;
+  private duplicateStats: Map<string, number>;
   private config: BloomFilterConfig;
+  private heuristicWeights: { [key: string]: number };
 
   constructor(expectedChannels: number = 50000) {
-    // Configuración optimizada para servidores IPTV masivos
-    this.config = this.calculateOptimalConfig(expectedChannels);
-    
-    // Inicializar filtro Bloom con parámetros heurísticos
-    this.bt = new BloomFilter(
-      this.config.bitArraySize,
-      this.config.hashFunctions
-    );
-
-    this.channelFingerprints = new Map();
-    this.duplicateCounter = new Map();
-    this.performanceMetrics = {
-      totalChecks: 0,
-      duplicatesFound: 0,
-      averageProcessingTime: 0
-    };
+    this.config = this.calculateOptimalConfiguration(expectedChannels);
+    this.initializeBloomFilter();
+    this.channelSignatures = new Map();
+    this.duplicateStats = new Map();
+    this.initializeHeuristicWeights();
   }
 
   /**
-   * Detección holística de duplicados con análisis heurístico avanzado
+   * Verificación holística de duplicación con análisis multi-dimensional
    */
-  public checkChannelDuplication(
-    channelName: string,
-    channelUrl: string,
-    groupName?: string
+  public checkDuplication(
+    channelName: string, 
+    channelUrl: string, 
+    channelGroup?: string
   ): DuplicationResult {
     const startTime = performance.now();
 
     try {
-      // Validación de entrada con sanitización
+      // Validar entrada
       if (!this.isValidInput(channelName, channelUrl)) {
-        return this.createErrorResult('Datos de canal inválidos', startTime);
+        return this.createErrorResult('Entrada inválida', startTime);
       }
 
-      // Generar fingerprint holístico del canal
-      const fingerprint = this.generateChannelFingerprint(
-        channelName,
-        channelUrl,
-        groupName
-      );
+      // Generar firma digital del canal
+      const signature = this.generateChannelSignature(channelName, channelUrl, channelGroup);
 
-      // Verificación multicapa con diferentes niveles de precisión
-      const exactDuplicate = this.checkExactDuplicate(fingerprint);
-      const similarChannels = this.findSimilarChannels(fingerprint);
-      const bloomResult = this.checkBloomFilter(fingerprint);
+      // Verificación en múltiples niveles
+      const exactMatch = this.checkExactDuplicate(signature);
+      const similarChannels = this.findSimilarChannels(signature);
+      const bloomResult = this.checkBloomFilter(signature);
 
-      // Algoritmo heurístico de decisión
-      const isDuplicate = exactDuplicate || this.evaluateDuplicationHeuristics(
-        fingerprint,
-        similarChannels,
-        bloomResult
-      );
+      // Análisis heurístico de duplicación
+      const heuristicScore = this.calculateHeuristicScore(signature, similarChannels, bloomResult);
+      const isDuplicate = heuristicScore.isDuplicate;
+      const duplicateType = this.determineDuplicateType(exactMatch, similarChannels, heuristicScore);
 
-      const confidence = this.calculateConfidenceScore(
-        exactDuplicate,
-        similarChannels,
-        bloomResult
-      );
-
-      // Actualizar estructuras de datos si no es duplicado
+      // Registrar canal si no es duplicado
       if (!isDuplicate) {
-        this.addChannelToIndex(fingerprint);
+        this.registerChannel(signature);
       } else {
-        this.incrementDuplicateCounter(fingerprint.combinedHash);
+        this.recordDuplicate(signature.combinedHash);
       }
 
       const processingTime = performance.now() - startTime;
-      this.updatePerformanceMetrics(processingTime, isDuplicate);
 
       return {
         isDuplicate,
-        confidence,
-        similarChannels: similarChannels.map(fp => fp.normalizedName),
-        processingTime
+        confidence: heuristicScore.confidence,
+        similarChannels: similarChannels.map(s => s.normalizedName),
+        processingTime,
+        duplicateType
       };
 
     } catch (error: any) {
-      console.error('Error en detección de duplicados:', error);
-      return this.createErrorResult(`Error de procesamiento: ${error.message}`, startTime);
+      console.error('Error en verificación de duplicación:', error);
+      return this.createErrorResult(`Error: ${error.message}`, startTime);
     }
   }
 
   /**
-   * Generación de fingerprint holístico con múltiples dimensiones
+   * Generación de firma digital holística del canal
    */
-  private generateChannelFingerprint(
-    name: string,
-    url: string,
+  private generateChannelSignature(
+    name: string, 
+    url: string, 
     group?: string
-  ): ChannelFingerprint {
-    // Normalización inteligente del nombre
+  ): ChannelSignature {
+    // Normalización avanzada del nombre
     const normalizedName = this.normalizeChannelName(name);
     
-    // Normalización de URL con limpieza de parámetros
+    // Normalización de URL con limpieza profunda
     const normalizedUrl = this.normalizeChannelUrl(url);
     
-    // Generación de hashes con diferentes algoritmos
-    const urlHash = this.generateStableHash(normalizedUrl);
-    const nameHash = this.generateStableHash(normalizedName);
+    // Generación de hashes únicos
+    const nameHash = this.generateHash(normalizedName);
+    const urlHash = this.generateHash(normalizedUrl);
     
-    // Combinación holística incluyendo grupo si está disponible
+    // Hash combinado con peso heurístico
     const combinedData = group 
-      ? `${normalizedName}|${normalizedUrl}|${group.toLowerCase()}`
+      ? `${normalizedName}|${normalizedUrl}|${group.toLowerCase().trim()}`
       : `${normalizedName}|${normalizedUrl}`;
-    
-    const combinedHash = this.generateStableHash(combinedData);
+    const combinedHash = this.generateHash(combinedData);
 
     return {
-      urlHash,
       nameHash,
+      urlHash,
+      normalizedName,
+      normalizedUrl,
       combinedHash,
-      normalizedName
+      group: group?.toLowerCase().trim()
     };
   }
 
@@ -160,283 +137,351 @@ export class IPTVBloomFilter {
     return name
       .toLowerCase()
       .trim()
-      // Remover patrones comunes de duplicación
-      .replace(/\[.*?\]/g, '') // [HD], [720p], etc.
-      .replace(/\(.*?\)/g, '') // (ES), (Latino), etc.
-      .replace(/\s*-\s*hd$/i, '') // - HD al final
-      .replace(/\s*hd\s*$/i, '') // HD al final
-      .replace(/\s*4k\s*$/i, '') // 4K al final
-      .replace(/\s*1080p?\s*$/i, '') // 1080p al final
-      .replace(/\s*720p?\s*$/i, '') // 720p al final
+      // Remover indicadores de calidad
+      .replace(/\s*\[?(4k|uhd|fhd|hd|1080p?|720p?|480p?|sd)\]?\s*/gi, '')
+      // Remover indicadores de idioma
+      .replace(/\s*\[?(es|en|pt|fr|latino?|spanish|english)\]?\s*/gi, '')
+      // Remover patrones de duplicación
+      .replace(/\s*\[.*?\]\s*/g, '') // Contenido entre corchetes
+      .replace(/\s*\(.*?\)\s*/g, '') // Contenido entre paréntesis
+      .replace(/\s*-\s*(hd|4k|uhd)$/gi, '') // Sufijos de calidad
+      .replace(/\s*copy\s*\d*$/gi, '') // Indicadores de copia
+      .replace(/\s*backup\s*\d*$/gi, '') // Indicadores de backup
+      // Normalización de espacios y caracteres
       .replace(/\s+/g, ' ') // Múltiples espacios a uno
-      .replace(/[^\w\s]/g, '') // Caracteres especiales
+      .replace(/[^\w\s]/g, '') // Caracteres especiales excepto espacios
       .trim();
   }
 
   /**
-   * Normalización de URLs con limpieza heurística
+   * Normalización avanzada de URLs
    */
   private normalizeChannelUrl(url: string): string {
     try {
       const urlObj = new URL(url);
       
-      // Remover parámetros que pueden variar pero representar el mismo canal
-      const paramsToRemove = ['token', 'auth', 'timestamp', 'session', 'key'];
-      paramsToRemove.forEach(param => urlObj.searchParams.delete(param));
+      // Remover parámetros variables comunes
+      const volatileParams = [
+        'token', 'auth', 'timestamp', 'session', 'key', 'time', 
+        'signature', 'expires', 'hash', 'nonce', 'rand'
+      ];
       
-      // Normalizar protocolo
+      volatileParams.forEach(param => {
+        urlObj.searchParams.delete(param);
+      });
+      
+      // Normalizar protocolo para comparación
       if (urlObj.protocol === 'https:') {
-        urlObj.protocol = 'http:'; // Para comparación consistente
+        urlObj.protocol = 'http:';
+      }
+      
+      // Normalizar puerto por defecto
+      if (urlObj.port === '80' || urlObj.port === '443') {
+        urlObj.port = '';
       }
       
       return urlObj.toString().toLowerCase();
     } catch {
       // Fallback para URLs malformadas
-      return url.toLowerCase().replace(/[?&](token|auth|timestamp|session|key)=[^&]*/g, '');
+      return url
+        .toLowerCase()
+        .replace(/[?&](token|auth|timestamp|session|key|time|signature|expires|hash|nonce|rand)=[^&]*/g, '')
+        .replace(/https?:\/\//, 'http://');
     }
   }
 
   /**
-   * Verificación exacta de duplicados
+   * Verificación de duplicado exacto
    */
-  private checkExactDuplicate(fingerprint: ChannelFingerprint): boolean {
-    return this.channelFingerprints.has(fingerprint.combinedHash) ||
-           this.channelFingerprints.has(fingerprint.urlHash);
+  private checkExactDuplicate(signature: ChannelSignature): boolean {
+    return this.channelSignatures.has(signature.combinedHash) ||
+           this.channelSignatures.has(signature.urlHash) ||
+           this.channelSignatures.has(signature.nameHash);
   }
 
   /**
    * Búsqueda heurística de canales similares
    */
-  private findSimilarChannels(fingerprint: ChannelFingerprint): ChannelFingerprint[] {
-    const similarChannels: ChannelFingerprint[] = [];
-    
-    for (const [hash, existingFingerprint] of this.channelFingerprints) {
-      // Verificar similitud por nombre normalizado
-      const nameSimilarity = this.calculateStringSimilarity(
-        fingerprint.normalizedName,
-        existingFingerprint.normalizedName
+  private findSimilarChannels(signature: ChannelSignature): ChannelSignature[] {
+    const similarChannels: ChannelSignature[] = [];
+    const threshold = 0.8; // Umbral de similitud
+
+    for (const existingSignature of this.channelSignatures.values()) {
+      // Similitud de nombres
+      const nameSimilarity = this.calculateSimilarity(
+        signature.normalizedName, 
+        existingSignature.normalizedName
       );
       
-      // Verificar similitud por URL base
-      const urlSimilarity = this.calculateUrlSimilarity(
-        fingerprint.urlHash,
-        existingFingerprint.urlHash
+      // Similitud de URLs base
+      const urlSimilarity = this.calculateUrlBaseSimilarity(
+        signature.normalizedUrl, 
+        existingSignature.normalizedUrl
       );
       
-      // Umbral heurístico de similitud
-      if (nameSimilarity > 0.85 || urlSimilarity > 0.9) {
-        similarChannels.push(existingFingerprint);
+      // Similitud de grupo (si ambos tienen)
+      const groupSimilarity = (signature.group && existingSignature.group)
+        ? this.calculateSimilarity(signature.group, existingSignature.group)
+        : 0;
+
+      // Puntuación ponderada
+      const overallSimilarity = (
+        nameSimilarity * this.heuristicWeights.name +
+        urlSimilarity * this.heuristicWeights.url +
+        groupSimilarity * this.heuristicWeights.group
+      );
+
+      if (overallSimilarity >= threshold) {
+        similarChannels.push(existingSignature);
       }
     }
-    
-    return similarChannels;
+
+    return similarChannels.slice(0, 5); // Limitar a 5 similares más relevantes
   }
 
   /**
-   * Verificación optimizada con Bloom Filter
+   * Verificación con Bloom Filter
    */
-  private checkBloomFilter(fingerprint: ChannelFingerprint): boolean {
-    // Verificar múltiples representaciones del canal
-    const representations = [
-      fingerprint.combinedHash,
-      fingerprint.urlHash,
-      fingerprint.nameHash
-    ];
-    
-    return representations.some(repr => this.bt.test(repr));
+  private checkBloomFilter(signature: ChannelSignature): boolean {
+    return this.bloomFilter.test(signature.combinedHash) ||
+           this.bloomFilter.test(signature.nameHash) ||
+           this.bloomFilter.test(signature.urlHash);
   }
 
   /**
-   * Evaluación heurística de duplicación con múltiples factores
+   * Cálculo de score heurístico de duplicación
    */
-  private evaluateDuplicationHeuristics(
-    fingerprint: ChannelFingerprint,
-    similarChannels: ChannelFingerprint[],
+  private calculateHeuristicScore(
+    signature: ChannelSignature, 
+    similarChannels: ChannelSignature[], 
     bloomResult: boolean
-  ): boolean {
-    // Factor 1: Resultado del Bloom Filter (peso 30%)
-    let score = bloomResult ? 0.3 : 0;
-    
-    // Factor 2: Canales similares encontrados (peso 40%)
+  ): { isDuplicate: boolean; confidence: number } {
+    let score = 0;
+    let confidence = 0;
+
+    // Factor 1: Resultado del Bloom Filter (20%)
+    if (bloomResult) {
+      score += 0.2;
+      confidence += 0.2;
+    }
+
+    // Factor 2: Canales similares encontrados (40%)
     if (similarChannels.length > 0) {
-      const maxSimilarity = Math.max(...similarChannels.map(ch => 
-        this.calculateStringSimilarity(fingerprint.normalizedName, ch.normalizedName)
+      const maxSimilarity = Math.max(...similarChannels.map(similar => 
+        this.calculateSimilarity(signature.normalizedName, similar.normalizedName)
       ));
       score += maxSimilarity * 0.4;
+      confidence += maxSimilarity * 0.3;
     }
-    
-    // Factor 3: Frecuencia de aparición del hash (peso 20%)
-    const hashFrequency = this.duplicateCounter.get(fingerprint.combinedHash) || 0;
-    score += Math.min(hashFrequency / 10, 0.2); // Máximo 0.2
-    
-    // Factor 4: Patrones comunes de duplicación (peso 10%)
-    if (this.hasCommonDuplicationPatterns(fingerprint.normalizedName)) {
-      score += 0.1;
+
+    // Factor 3: Frecuencia de aparición (20%)
+    const frequency = this.duplicateStats.get(signature.combinedHash) || 0;
+    const frequencyScore = Math.min(frequency / 5, 0.2);
+    score += frequencyScore;
+    confidence += frequencyScore;
+
+    // Factor 4: Patrones de duplicación conocidos (20%)
+    if (this.hasKnownDuplicationPatterns(signature.normalizedName)) {
+      score += 0.2;
+      confidence += 0.15;
     }
-    
-    return score > 0.6; // Umbral de decisión heurística
+
+    const isDuplicate = score >= 0.65; // Umbral de decisión
+    confidence = Math.min(1.0, confidence);
+
+    return { isDuplicate, confidence };
   }
 
   /**
-   * Cálculo de score de confianza
+   * Determinación del tipo de duplicado
    */
-  private calculateConfidenceScore(
-    exactDuplicate: boolean,
-    similarChannels: ChannelFingerprint[],
-    bloomResult: boolean
-  ): number {
-    if (exactDuplicate) return 1.0;
+  private determineDuplicateType(
+    exactMatch: boolean, 
+    similarChannels: ChannelSignature[], 
+    heuristicScore: { isDuplicate: boolean; confidence: number }
+  ): 'exact' | 'similar' | 'potential' | 'none' {
     
-    let confidence = 0.0;
+    if (exactMatch) return 'exact';
     
-    if (bloomResult) confidence += 0.4;
-    if (similarChannels.length > 0) confidence += 0.5;
-    if (similarChannels.length > 2) confidence += 0.1; // Múltiples similares
+    if (similarChannels.length > 0 && heuristicScore.confidence > 0.8) {
+      return 'similar';
+    }
     
-    return Math.min(1.0, confidence);
+    if (heuristicScore.isDuplicate && heuristicScore.confidence > 0.6) {
+      return 'potential';
+    }
+    
+    return 'none';
   }
 
   /**
-   * Cálculo optimizado de configuración del Bloom Filter
+   * Cálculo de similitud usando algoritmo de Jaro-Winkler optimizado
    */
-  private calculateOptimalConfig(expectedElements: number): BloomFilterConfig {
-    const falsePositiveRate = 0.01; // 1% de falsos positivos
-    
-    // Cálculos basados en fórmulas óptimas de Bloom Filter
-    const bitArraySize = Math.ceil(
-      -expectedElements * Math.log(falsePositiveRate) / (Math.log(2) * Math.log(2))
-    );
-    
-    const hashFunctions = Math.round(
-      (bitArraySize / expectedElements) * Math.log(2)
-    );
-    
-    return {
-      expectedElements,
-      falsePositiveRate,
-      hashFunctions: Math.max(1, Math.min(hashFunctions, 10)),
-      bitArraySize: Math.max(bitArraySize, 1000)
-    };
+  private calculateSimilarity(str1: string, str2: string): number {
+    if (str1 === str2) return 1.0;
+    if (!str1 || !str2) return 0.0;
+
+    // Algoritmo de Jaro-Winkler simplificado para performance
+    const maxDistance = Math.floor(Math.max(str1.length, str2.length) / 2) - 1;
+    const matches = [];
+    const str1Matches = new Array(str1.length).fill(false);
+    const str2Matches = new Array(str2.length).fill(false);
+
+    let matchCount = 0;
+    let transpositions = 0;
+
+    // Encontrar matches
+    for (let i = 0; i < str1.length; i++) {
+      const start = Math.max(0, i - maxDistance);
+      const end = Math.min(i + maxDistance + 1, str2.length);
+      
+      for (let j = start; j < end; j++) {
+        if (str2Matches[j] || str1[i] !== str2[j]) continue;
+        str1Matches[i] = str2Matches[j] = true;
+        matches.push([i, j]);
+        matchCount++;
+        break;
+      }
+    }
+
+    if (matchCount === 0) return 0.0;
+
+    // Contar transposiciones
+    matches.sort((a, b) => a[0] - b[0]);
+    for (let i = 0; i < matches.length; i++) {
+      if (str1[matches[i][0]] !== str2[matches[i][1]]) {
+        transpositions++;
+      }
+    }
+
+    // Cálculo de Jaro
+    const jaro = (matchCount / str1.length + 
+                  matchCount / str2.length + 
+                  (matchCount - transpositions/2) / matchCount) / 3;
+
+    return jaro;
+  }
+
+  /**
+   * Cálculo de similitud de URL base
+   */
+  private calculateUrlBaseSimilarity(url1: string, url2: string): number {
+    try {
+      const host1 = new URL(url1).hostname;
+      const host2 = new URL(url2).hostname;
+      
+      if (host1 === host2) return 1.0;
+      
+      // Verificar subdominios del mismo dominio
+      const domain1 = host1.split('.').slice(-2).join('.');
+      const domain2 = host2.split('.').slice(-2).join('.');
+      
+      return domain1 === domain2 ? 0.8 : 0.0;
+    } catch {
+      return url1 === url2 ? 1.0 : 0.0;
+    }
+  }
+
+  /**
+   * Detección de patrones conocidos de duplicación
+   */
+  private hasKnownDuplicationPatterns(name: string): boolean {
+    const patterns = [
+      /\s*copy\s*\d*$/i,
+      /\s*backup\s*\d*$/i,
+      /\s*\(\d+\)$/,
+      /\s*-\s*\d+$/,
+      /\s*duplicate$/i,
+      /\s*mirror$/i
+    ];
+
+    return patterns.some(pattern => pattern.test(name));
   }
 
   /**
    * Generación de hash estable y distribuido
    */
-  private generateStableHash(input: string): string {
+  private generateHash(input: string): string {
     let hash = 0;
     if (input.length === 0) return hash.toString();
-    
+
     for (let i = 0; i < input.length; i++) {
       const char = input.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convertir a 32bit integer
+      hash = hash & hash; // Convertir a entero de 32 bits
     }
-    
+
     return Math.abs(hash).toString(36);
   }
 
   /**
-   * Cálculo de similitud de strings usando algoritmo de distancia
+   * Configuración óptima del Bloom Filter
    */
-  private calculateStringSimilarity(str1: string, str2: string): number {
-    if (str1 === str2) return 1.0;
-    if (!str1 || !str2) return 0.0;
+  private calculateOptimalConfiguration(expectedElements: number): BloomFilterConfig {
+    const falsePositiveRate = 0.005; // 0.5% de falsos positivos
     
-    const longer = str1.length > str2.length ? str1 : str2;
-    const shorter = str1.length > str2.length ? str2 : str1;
+    const bitArraySize = Math.ceil(
+      -expectedElements * Math.log(falsePositiveRate) / (Math.log(2) * Math.log(2))
+    );
     
-    if (longer.length === 0) return 1.0;
+    const hashFunctions = Math.round((bitArraySize / expectedElements) * Math.log(2));
     
-    const distance = this.calculateLevenshteinDistance(longer, shorter);
-    return (longer.length - distance) / longer.length;
+    return {
+      expectedElements,
+      falsePositiveRate,
+      hashFunctions: Math.max(1, Math.min(hashFunctions, 12)),
+      bitArraySize: Math.max(bitArraySize, 1000)
+    };
   }
 
   /**
-   * Algoritmo de distancia de Levenshtein optimizado
+   * Inicialización del Bloom Filter
    */
-  private calculateLevenshteinDistance(str1: string, str2: string): number {
-    const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
-    
-    for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
-    for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
-    
-    for (let j = 1; j <= str2.length; j++) {
-      for (let i = 1; i <= str1.length; i++) {
-        const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-        matrix[j][i] = Math.min(
-          matrix[j][i - 1] + 1,     // insertion
-          matrix[j - 1][i] + 1,     // deletion
-          matrix[j - 1][i - 1] + cost // substitution
-        );
-      }
-    }
-    
-    return matrix[str2.length][str1.length];
+  private initializeBloomFilter(): void {
+    this.bloomFilter = new BloomFilter(
+      this.config.bitArraySize || 32 * 1024, // 32KB por defecto
+      this.config.hashFunctions || 4
+    );
   }
 
   /**
-   * Cálculo de similitud de URLs
+   * Inicialización de pesos heurísticos
    */
-  private calculateUrlSimilarity(hash1: string, hash2: string): number {
-    return hash1 === hash2 ? 1.0 : 0.0;
+  private initializeHeuristicWeights(): void {
+    this.heuristicWeights = {
+      name: 0.5,    // 50% peso al nombre
+      url: 0.35,    // 35% peso a la URL
+      group: 0.15   // 15% peso al grupo
+    };
   }
 
   /**
-   * Detección de patrones comunes de duplicación
+   * Registro de canal único
    */
-  private hasCommonDuplicationPatterns(name: string): boolean {
-    const patterns = [
-      /\s*(copy|copia|\d+)$/i,
-      /\s*-\s*\d+$/,
-      /\s*\(\d+\)$/,
-      /\s*(backup|respaldo)$/i
-    ];
-    
-    return patterns.some(pattern => pattern.test(name));
-  }
-
-  /**
-   * Validación de entrada robusta
-   */
-  private isValidInput(name: string, url: string): boolean {
-    if (typeof name !== 'string' || name.length === 0) return false;
-    if (typeof url !== 'string' || url.length === 0) return false;
-    // URLs can be relative in some M3U files, so we remove this check for now.
-    // if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
-    
-    return true;
-  }
-
-  /**
-   * Adición de canal al índice
-   */
-  private addChannelToIndex(fingerprint: ChannelFingerprint): void {
-    this.channelFingerprints.set(fingerprint.combinedHash, fingerprint);
+  private registerChannel(signature: ChannelSignature): void {
+    this.channelSignatures.set(signature.combinedHash, signature);
     
     // Agregar al Bloom Filter
-    this.bt.add(fingerprint.combinedHash);
-    this.bt.add(fingerprint.urlHash);
-    this.bt.add(fingerprint.nameHash);
+    this.bloomFilter.add(signature.combinedHash);
+    this.bloomFilter.add(signature.nameHash);
+    this.bloomFilter.add(signature.urlHash);
   }
 
   /**
-   * Incremento de contador de duplicados
+   * Registro de duplicado encontrado
    */
-  private incrementDuplicateCounter(hash: string): void {
-    const currentCount = this.duplicateCounter.get(hash) || 0;
-    this.duplicateCounter.set(hash, currentCount + 1);
+  private recordDuplicate(hash: string): void {
+    const count = this.duplicateStats.get(hash) || 0;
+    this.duplicateStats.set(hash, count + 1);
   }
 
   /**
-   * Actualización de métricas de rendimiento
+   * Validación de entrada
    */
-  private updatePerformanceMetrics(processingTime: number, isDuplicate: boolean): void {
-    this.performanceMetrics.totalChecks++;
-    if (isDuplicate) this.performanceMetrics.duplicatesFound++;
-    
-    const totalTime = this.performanceMetrics.averageProcessingTime * 
-                     (this.performanceMetrics.totalChecks - 1) + processingTime;
-    this.performanceMetrics.averageProcessingTime = totalTime / this.performanceMetrics.totalChecks;
+  private isValidInput(name: string, url: string): boolean {
+    return typeof name === 'string' && name.length > 0 &&
+           typeof url === 'string' && url.length > 0 &&
+           (url.startsWith('http://') || url.startsWith('https://'));
   }
 
   /**
@@ -447,87 +492,85 @@ export class IPTVBloomFilter {
       isDuplicate: false,
       confidence: 0,
       similarChannels: [],
-      processingTime: performance.now() - startTime
+      processingTime: performance.now() - startTime,
+      duplicateType: 'none'
     };
   }
 
   // Métodos públicos de utilidad
   public getStatistics() {
     return {
-      ...this.performanceMetrics,
-      uniqueChannels: this.channelFingerprints.size,
-      duplicatePatterns: this.duplicateCounter.size,
-      filterSaturation: this.channelFingerprints.size / this.config.expectedElements
+      uniqueChannels: this.channelSignatures.size,
+      totalDuplicates: Array.from(this.duplicateStats.values()).reduce((a, b) => a + b, 0),
+      bloomFilterSize: this.config.bitArraySize,
+      expectedCapacity: this.config.expectedElements,
+      saturationLevel: (this.channelSignatures.size / this.config.expectedElements) * 100
     };
   }
 
-  public clearFilter(): void {
-    this.bt = new BloomFilter(this.config.bitArraySize, this.config.hashFunctions);
-    this.channelFingerprints.clear();
-    this.duplicateCounter.clear();
-    this.performanceMetrics = {
-      totalChecks: 0,
-      duplicatesFound: 0,
-      averageProcessingTime: 0
-    };
+  public resetFilter(): void {
+    this.initializeBloomFilter();
+    this.channelSignatures.clear();
+    this.duplicateStats.clear();
   }
 
-  public exportFingerprints(): ChannelFingerprint[] {
-    return Array.from(this.channelFingerprints.values());
-  }
-
-  public importFingerprints(fingerprints: ChannelFingerprint[]): void {
-    fingerprints.forEach(fp => this.addChannelToIndex(fp));
+  public exportSignatures(): ChannelSignature[] {
+    return Array.from(this.channelSignatures.values());
   }
 }
 
-// Instancia global optimizada para hot reloads
-let globalFilter: IPTVBloomFilter;
+// Instancia global para reutilización
+let globalBloomFilter: IPTVBloomFilter;
 
 /**
- * Función principal exportada para verificación de duplicados
- * Optimizada para el ecosistema del Constructor IPTV Pro
+ * Función principal para verificación de duplicados
  */
 export function isDuplicated(
   channelName: string, 
   channelUrl: string, 
-  groupName?: string
+  channelGroup?: string
 ): DuplicationResult {
   try {
-    // Inicialización lazy con configuración optimizada para IPTV
-    if (!globalFilter) {
-      globalFilter = new IPTVBloomFilter(100000); // 100k canales esperados
+    if (!globalBloomFilter) {
+      globalBloomFilter = new IPTVBloomFilter(100000); // 100K canales esperados
     }
     
-    return globalFilter.checkChannelDuplication(channelName, channelUrl, groupName);
-    
+    return globalBloomFilter.checkDuplication(channelName, channelUrl, channelGroup);
   } catch (error: any) {
     console.error('Error crítico en verificación de duplicados:', error);
     return {
       isDuplicate: false,
       confidence: 0,
       similarChannels: [],
-      processingTime: 0
+      processingTime: 0,
+      duplicateType: 'none'
     };
   }
 }
 
 /**
- * Exportación de la instancia global para uso avanzado
+ * Obtener instancia global del filtro
  */
 export function getBloomFilterInstance(): IPTVBloomFilter {
-  if (!globalFilter) {
-    globalFilter = new IPTVBloomFilter(100000);
+  if (!globalBloomFilter) {
+    globalBloomFilter = new IPTVBloomFilter(100000);
   }
-  return globalFilter;
+  return globalBloomFilter;
 }
 
 /**
- * Reset global del filtro para casos específicos
+ * Reiniciar filtro global
  */
-export function resetGlobalFilter(): void {
-  if (globalFilter) {
-    globalFilter.clearFilter();
+export function resetGlobalBloomFilter(): void {
+  if (globalBloomFilter) {
+    globalBloomFilter.resetFilter();
   }
-  globalFilter = new IPTVBloomFilter(100000);
+  globalBloomFilter = new IPTVBloomFilter(100000);
+}
+
+/**
+ * Obtener estadísticas globales
+ */
+export function getGlobalFilterStats() {
+  return globalBloomFilter ? globalBloomFilter.getStatistics() : null;
 }

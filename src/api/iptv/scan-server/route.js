@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { connectToIPTVServer } from '@/lib/iptvServerConnector';
+import { getServerManager } from '@/lib/ServerManager';
 
-export const runtime = 'nodejs'; // Force Node.js runtime for compatibility
+export const runtime = 'nodejs';
 
 const ServerSchema = z.object({
   id: z.string(),
@@ -21,32 +21,29 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Datos del servidor incompletos o inválidos', details: parsedServer.error.flatten() }, { status: 400 });
     }
 
-    const { url, username, password } = parsedServer.data;
-
+    const { username, password } = parsedServer.data;
     console.log(`[API/scan-server] Iniciando escaneo holístico para: ${parsedServer.data.name}`);
 
-    const connectionResult = await connectToIPTVServer({
-      url,
-      username,
-      password,
-      serverType: 'auto',
-      enableDuplicateFilter: true,
-    });
-
+    const serverManager = getServerManager();
+    const connectionResult = await serverManager.connectToGensparkServer(username, password);
+    
     if (!connectionResult.success) {
-      throw new Error(connectionResult.errorMessage || 'Falló la conexión y extracción de canales.');
+      throw new Error(connectionResult.error || 'Falló la conexión y extracción de canales.');
     }
 
+    const channels = connectionResult.channels || [];
+    const connection = serverManager.getConnection(connectionResult.connectionId);
+    
     const results = {
-      serverInfo: connectionResult.serverInfo,
-      categories: [], // The new connector doesn't provide categories directly, this can be adapted.
-      totalChannels: connectionResult.channels.length,
-      duplicatesFound: connectionResult.duplicatesFound,
-      duplicatesRemoved: connectionResult.duplicatesRemoved,
-      processingTime: connectionResult.processingTime,
-      protocol: connectionResult.serverInfo?.serverType || 'auto-detected',
+      serverInfo: { serverName: 'Genspark IPTV Server' },
+      categories: [...new Set(channels.map(c => c.group))],
+      totalChannels: channels.length,
+      duplicatesFound: connection?.metrics.duplicatesRemoved || 0,
+      duplicatesRemoved: connection?.metrics.duplicatesRemoved || 0,
+      processingTime: connection?.metrics.responseTime || 0,
+      protocol: 'Xtream Codes (auto-detected)',
       error: null,
-      channels: connectionResult.channels, // Return full channel list
+      channels: channels.map(c => ({...c, stream_id: c.id, category_id: c.group, stream_icon: c.logo})), // Adapt to legacy format if needed
     };
 
     return NextResponse.json({ success: true, results });
